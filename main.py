@@ -1,12 +1,12 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Depends, Response
+from fastapi import FastAPI, Request, Depends, Response, Query
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from db import init_db, get_session, engine
@@ -74,25 +74,45 @@ def latest_events(session: Session = Depends(get_session)):
     stmt = select(K8sEvent).order_by(K8sEvent.created_at.desc()).limit(20)
     return list(session.exec(stmt))
 
-
 @app.get("/events/search")
-def search_events(q: str | None = None, session: Session = Depends(get_session)):
+def search_events(
+    q: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    session: Session = Depends(get_session)
+):
     stmt = select(K8sEvent)
 
     if q:
         like = f"%{q}%"
         stmt = stmt.where(
-            (K8sEvent.message.ilike(like))
-            | (K8sEvent.name.ilike(like))
-            | (K8sEvent.involved_name.ilike(like))
-            | (K8sEvent.involved_kind.ilike(like))
-            | (K8sEvent.namespace.ilike(like))
-            | (K8sEvent.reason.ilike(like))
-            | (K8sEvent.type.ilike(like))
+            (K8sEvent.message.ilike(like)) |
+            (K8sEvent.name.ilike(like)) |
+            (K8sEvent.involved_name.ilike(like)) |
+            (K8sEvent.involved_kind.ilike(like)) |
+            (K8sEvent.namespace.ilike(like)) |
+            (K8sEvent.reason.ilike(like)) |
+            (K8sEvent.type.ilike(like))
         )
 
-    stmt = stmt.order_by(K8sEvent.created_at.desc()).limit(200)
-    return list(session.exec(stmt))
+    # --- Count total ---
+    total = session.exec(
+        select(func.count()).select_from(stmt.subquery())
+    ).one()
+
+    # --- Pagination ---
+    offset = (page - 1) * page_size
+    stmt = stmt.order_by(K8sEvent.created_at.desc()).offset(offset).limit(page_size)
+
+    items = list(session.exec(stmt))
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size
+    }
 
 
 @app.get("/events/stream")

@@ -1,5 +1,7 @@
 const PAGE_SIZE = 20;
 let currentPage = 1;
+let searchPage = 1;
+const SEARCH_PAGE_SIZE = 20;
 
 // --- Tabs ---
 document.querySelectorAll(".tab").forEach(tab => {
@@ -95,15 +97,25 @@ const searchResults = document.getElementById("searchResults");
 const searchBtn = document.getElementById("searchBtn");
 const searchInput = document.getElementById("searchInput");
 
-async function doSearch() {
-    const q = searchInput.value;
-    const res = await fetch('/events/search?q=' + encodeURIComponent(q));
-    const data = await res.json();
+async function doSearch(page = 1) {
+    searchPage = page;
 
-    const pageData = paginate(data);
+    const q = searchInput.value || "";
+    const url = `/events/search?q=${encodeURIComponent(q)}&page=${page}&page_size=${SEARCH_PAGE_SIZE}`;
+
+    const res = await fetch(url);
+
+    if (!res.ok) {
+        console.error("Search failed:", res.status, await res.text());
+        return;
+    }
+
+    const data = await res.json();
+    const items = data.items || [];
+    const totalPages = data.pages || 1;
 
     searchResults.innerHTML = "";
-    pageData.forEach(ev => {
+    items.forEach(ev => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td>${ev.created_at}</td>
@@ -115,15 +127,11 @@ async function doSearch() {
         searchResults.appendChild(tr);
     });
 
-    renderPagination(
-        document.getElementById("searchPagination"),
-        data.length,
-        doSearch
-    );
+    renderSearchPagination(totalPages);
 }
 
-searchBtn.onclick = doSearch;
-searchInput.onkeydown = e => { if (e.key === "Enter") doSearch(); };
+searchBtn.onclick = doSearch(1);
+searchInput.onkeydown = e => { if (e.key === "Enter") doSearch(1); };
 
 // --- Stats ---
 const statsList = document.getElementById("statsList");
@@ -190,6 +198,31 @@ function renderPagination(container, totalItems, onPageChange) {
             e.preventDefault();
             currentPage = i;
             onPageChange();
+        });
+
+        li.appendChild(a);
+        container.appendChild(li);
+    }
+}
+
+function renderSearchPagination(totalPages) {
+    const container = document.getElementById("searchPagination");
+    container.innerHTML = "";
+
+    for (let i = 1; i <= totalPages; i++) {
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+
+        a.href = "#";
+        a.innerText = i;
+
+        if (i === searchPage) {
+            a.setAttribute("aria-current", "page");
+        }
+
+        a.addEventListener("click", e => {
+            e.preventDefault();
+            doSearch(i);
         });
 
         li.appendChild(a);
