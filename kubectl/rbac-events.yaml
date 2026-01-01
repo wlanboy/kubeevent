@@ -1,7 +1,16 @@
+# -----------------------------
+# Namespace: demo
+# -----------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubeevents
+  namespace: demo
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: event-reader
+  name: kubeevents-event-reader
   namespace: demo
 rules:
   - apiGroups: [""]
@@ -11,13 +20,46 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: event-reader-binding
+  name: kubeevents-event-reader-binding
   namespace: demo
 subjects:
   - kind: ServiceAccount
-    name: default
+    name: kubeevents
     namespace: demo
 roleRef:
   kind: Role
-  name: event-reader
+  name: kubeevents-event-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+# -----------------------------
+# Namespace: simpleservice
+# -----------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubeevents
+  namespace: simpleservice
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kubeevents-event-reader
+  namespace: simpleservice
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubeevents-event-reader-binding
+  namespace: simpleservice
+subjects:
+  - kind: ServiceAccount
+    name: kubeevents
+    namespace: simpleservice
+roleRef:
+  kind: Role
+  name: kubeevents-event-reader
   apiGroup: rbac.authorization.k8s.io
