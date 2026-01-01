@@ -57,38 +57,37 @@ def handle_event(event):
     with Session(engine) as session:
         upsert_event(session, ev)
 
-
 async def watch_namespace(namespace: str):
-    """Async Wrapper für einen Namespace."""
     global stop_watcher
 
     loop = asyncio.get_running_loop()
-    w = watch.Watch()
-    v1 = client.CoreV1Api()
+    queue = asyncio.Queue()
 
-    while not stop_watcher:
-        try:
-            # Stream im Threadpool ausführen
-            async for event in loop.run_in_executor(
-                None,
-                lambda: w.stream(
+    def sync_watch():
+        w = watch.Watch()
+        v1 = client.CoreV1Api()
+
+        while not stop_watcher:
+            try:
+                for event in w.stream(
                     v1.list_namespaced_event,
                     namespace=namespace,
                     timeout_seconds=5
-                )
-            ):
-                if stop_watcher:
-                    break
+                ):
+                    if stop_watcher:
+                        break
+                    loop.call_soon_threadsafe(queue.put_nowait, event)
+            except Exception as e:
+                print("WATCH ERROR:", e)
+                time.sleep(1)
+            finally:
+                w.stop()
 
-                handle_event(event)
+    thread = loop.run_in_executor(None, sync_watch)
 
-        except Exception as e:
-            print("WATCH ERROR:", e)
-            await asyncio.sleep(1)
-
-        finally:
-            w.stop()
-
+    while not stop_watcher:
+        event = await queue.get()
+        handle_event(event)
 
 async def watch_events_loop():
     """Startet mehrere Namespace‑Watcher parallel."""
