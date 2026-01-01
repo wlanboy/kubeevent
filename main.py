@@ -8,7 +8,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
-from db import init_db, get_session
+from db import init_db, get_session, engine
 from models import K8sEvent
 from k8s_watcher import watch_events_loop, stop_watcher
 from dotenv import load_dotenv
@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI):
     global stop_watcher
 
     load_dotenv(override=False)
-    
+
     init_db()
 
     # Async Watcher starten
@@ -39,6 +39,19 @@ app = FastAPI(lifespan=lifespan)
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
+
+@app.get("/readyz")
+async def readyz():
+    try:
+        with Session(engine) as session:
+            session.exec("SELECT 1")
+    except Exception:
+        return {"status": "error", "details": "db not ready"}
+    return {"status": "ready"}
 
 
 @app.get("/")
