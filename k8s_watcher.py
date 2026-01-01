@@ -82,7 +82,8 @@ async def watch_namespace(namespace: str):
 
                 handle_event(event)
 
-        except Exception:
+        except Exception as e:
+            print("WATCH ERROR:", e)
             await asyncio.sleep(1)
 
         finally:
