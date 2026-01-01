@@ -38,6 +38,8 @@ markupsafe==3.0.3
     # via jinja2
 oauthlib==3.3.1
     # via requests-oauthlib
+prometheus-client==0.23.1
+    # via kubeevents (pyproject.toml)
 pyasn1==0.6.1
     # via
     #   pyasn1-modules
