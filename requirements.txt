@@ -53,6 +53,8 @@ pydantic-core==2.41.5
     # via pydantic
 python-dateutil==2.9.0.post0
     # via kubernetes
+python-dotenv==1.2.1
+    # via kubeevents (pyproject.toml)
 pyyaml==6.0.3
     # via kubernetes
 requests==2.32.5
