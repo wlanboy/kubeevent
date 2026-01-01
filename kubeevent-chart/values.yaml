@@ -46,6 +46,10 @@ serviceAccount:
   create: true
   name: kubeevents
 
+watchNamespaces:
+  - demo
+  - simpleservice
+
 envConfig:
   enabled: true
   data: |
