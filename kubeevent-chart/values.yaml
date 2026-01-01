@@ -1,0 +1,53 @@
+image:
+  repository: wlanboy/kubeevent
+  tag: latest
+  pullPolicy: Always
+
+replicaCount: 1
+deploymentName: kubeevent
+
+service:
+  name: kubeevent-svc
+  type: ClusterIP
+  port: 5000
+  targetPort: 5000
+
+pvc:
+  enabled: true
+  name: kubeevent-tmp-pvc
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  size: "100Mi"
+
+volume:
+  mountPath: /tmp
+
+istio:
+  gatewayName: kubeevent-gw
+  gatewayNamespace: "istio-ingress"
+  hosts: 
+    - kubeevent.tp.lan
+    - kubeevent.gmk.lan
+  tls:
+    enabled: true
+    secretName: kubeevent-tls
+
+certManager:
+  enabled: true
+  issuerRef:
+    kind: ClusterIssuer
+    name: "local-ca-issuer"
+  dnsNames:
+    - kubeevent.tp.lan
+    - kubeevent.gmk.lan
+
+serviceAccount:
+  create: true
+  name: kubeevents
+
+envConfig:
+  enabled: true
+  data: |
+    DB_PATH=/app/data/events.db
+    POD_NAMESPACE=demo,simpleservice

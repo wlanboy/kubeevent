@@ -1,0 +1,9 @@
+{{- if .Values.envConfig.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.deploymentName }}-env
+data:
+  .env: |
+{{ .Values.envConfig.data | indent 4 }}
+{{- end }}

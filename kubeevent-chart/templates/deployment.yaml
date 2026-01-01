@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.deploymentName }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.deploymentName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.deploymentName }}
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: {{ .Values.deploymentName }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: {{ .Values.volume.mountPath }}
+            - name: env-file 
+              mountPath: /app/.env 
+              subPath: .env
+      volumes:
+        - name: tmp-volume
+          persistentVolumeClaim:
+            claimName: {{ .Values.pvc.name }}
+        - name: env-file 
+          configMap: 
+            name: {{ .Values.deploymentName }}-env
+            items: 
+              - key: .env 
+                path: .env
