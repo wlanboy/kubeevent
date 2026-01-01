@@ -1,77 +1,116 @@
 <!DOCTYPE html>
 <html data-theme="dark">
+
 <head>
     <meta charset="utf-8">
     <title>Kubernetes Events Viewer</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <style>
-    .sev-Normal { color: #4caf50; font-weight: bold; }
-    .sev-Warning { color: #ff9800; font-weight: bold; }
-    .sev-Error { color: #f44336; font-weight: bold; }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-    .tab.active { font-weight: bold; }
+        .sev-Normal {
+            color: #4caf50;
+            font-weight: bold;
+        }
+
+        .sev-Warning {
+            color: #ff9800;
+            font-weight: bold;
+        }
+
+        .sev-Error {
+            color: #f44336;
+            font-weight: bold;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .tab.active {
+            font-weight: bold;
+        }
     </style>
 </head>
+
 <body>
 
-<main class="container">
+    <main class="container">
 
-    <h1>Kubernetes Events</h1>
+        <h1>Kubernetes Events</h1>
 
-    <nav>
-        <ul>
-            <li><a href="#" data-tab="stream" class="tab active">Stream</a></li>
-            <li><a href="#" data-tab="search" class="tab">Suche</a></li>
-            <li><a href="#" data-tab="stats" class="tab">Stats</a></li>
-        </ul>
-    </nav>
+        <nav>
+            <ul>
+                <li><a href="#" data-tab="stream" class="tab active">Stream</a></li>
+                <li><a href="#" data-tab="search" class="tab">Suche</a></li>
+                <li><a href="#" data-tab="stats" class="tab">Stats</a></li>
+            </ul>
+        </nav>
 
-    <!-- STREAM TAB -->
-    <section id="tab-stream" class="tab-content active">
-        <input id="streamFilter" placeholder="Filter (Reason, Message, Name)">
-        <table id="streamTable">
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Type</th>
-                    <th>Reason</th>
-                    <th>Message</th>
-                    <th>Object</th>
-                </tr>
-            </thead>
-            <tbody id="streamBody"></tbody>
-        </table>
-    </section>
+        <!-- STREAM TAB -->
+        <section id="tab-stream" class="tab-content active">
+            <input id="streamFilter" placeholder="Filter (Reason, Message, Name)">
+            <table id="streamTable">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Reason</th>
+                        <th>Message</th>
+                        <th>Object</th>
+                    </tr>
+                </thead>
+                <tbody id="streamBody"></tbody>
+            </table>
+            <nav>
+                <ul id="streamPagination"></ul>
+            </nav>
 
-    <!-- SEARCH TAB -->
-    <section id="tab-search" class="tab-content">
-        <input id="searchInput" placeholder="Suchtext...">
-        <button id="searchBtn">Suchen</button>
+            <nav>
+                <ul id="searchPagination"></ul>
+            </nav>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Type</th>
-                    <th>Reason</th>
-                    <th>Message</th>
-                    <th>Object</th>
-                </tr>
-            </thead>
-            <tbody id="searchResults"></tbody>
-        </table>
-    </section>
+        </section>
 
-    <!-- STATS TAB -->
-    <section id="tab-stats" class="tab-content">
-        <h3>Statistiken</h3>
-        <ul id="statsList"></ul>
-    </section>
+        <!-- SEARCH TAB -->
+        <section id="tab-search" class="tab-content">
+            <input id="searchInput" placeholder="Suchtext...">
+            <button id="searchBtn">Suchen</button>
 
-</main>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Reason</th>
+                        <th>Message</th>
+                        <th>Object</th>
+                    </tr>
+                </thead>
+                <tbody id="searchResults"></tbody>
+            </table>
+            <nav>
+                <ul id="streamPagination"></ul>
+            </nav>
 
-<script src="/static/app.js"></script>
+            <nav>
+                <ul id="searchPagination"></ul>
+            </nav>
+
+        </section>
+
+        <!-- STATS TAB -->
+        <section id="tab-stats" class="tab-content">
+            <h3>Statistiken</h3>
+            <ul id="statsList"></ul>
+        </section>
+
+    </main>
+
+    <script src="/static/app.js"></script>
 
 </body>
+
 </html>
