@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY db.py .
 COPY models.py .
+COPY metrics.py .
 COPY k8s_watcher.py .
 COPY main.py .
 COPY static/ ./static/

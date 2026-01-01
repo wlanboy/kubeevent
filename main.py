@@ -1,12 +1,13 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Depends
+from fastapi import FastAPI, Request, Depends, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from db import init_db, get_session, engine
 from models import K8sEvent
@@ -53,6 +54,10 @@ async def readyz():
         return {"status": "error", "details": "db not ready"}
     return {"status": "ready"}
 
+@app.get("/metrics")
+def metrics():
+    data = generate_latest()
+    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
 @app.get("/")
 def index(request: Request):

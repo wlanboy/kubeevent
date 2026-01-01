@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from kubernetes import client, config, watch
 from sqlmodel import Session, select
+from metrics import events_total, events_by_type, events_by_namespace, watch_errors
 from db import engine
 from models import K8sEvent
 
@@ -47,6 +48,10 @@ def upsert_event(session: Session, ev):
             first_timestamp=to_dt(ev.first_timestamp),
             last_timestamp=to_dt(ev.last_timestamp),
         )
+
+        events_total.inc() 
+        events_by_type.labels(obj.type).inc() 
+        events_by_namespace.labels(obj.namespace).inc()
         session.add(obj)
 
     session.commit()
@@ -79,6 +84,7 @@ async def watch_namespace(namespace: str):
                     loop.call_soon_threadsafe(queue.put_nowait, event)
             except Exception as e:
                 print("WATCH ERROR:", e)
+                watch_errors.inc()
                 time.sleep(1)
             finally:
                 w.stop()
