@@ -1,8 +1,9 @@
-# db.py
 from sqlmodel import SQLModel, create_engine, Session
+import os
 
-DATABASE_URL = "sqlite:///./events.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+DB_PATH = os.getenv("DB_PATH", "data/events.db")
+
+engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
 
 def init_db():
     SQLModel.metadata.create_all(engine)
