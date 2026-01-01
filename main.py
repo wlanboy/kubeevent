@@ -10,20 +10,30 @@ from sqlmodel import Session, select
 
 from db import init_db, get_session
 from models import K8sEvent
-from k8s_watcher import watch_events_loop
+from k8s_watcher import watch_events_loop, stop_watcher
+from dotenv import load_dotenv
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    global stop_watcher
+
+    load_dotenv(override=False)
+    
     init_db()
 
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, watch_events_loop)
+    # Async Watcher starten
+    watcher_task = asyncio.create_task(watch_events_loop())
 
     yield
 
-    # Shutdown (optional)
-    # Hier könntest du später den Watch sauber stoppen.
+    # Shutdown
+    stop_watcher = True
+    watcher_task.cancel()
+    try:
+        await watcher_task
+    except:
+        pass
+
 
 app = FastAPI(lifespan=lifespan)
 
@@ -58,15 +68,23 @@ def search_events(q: str | None = None, session: Session = Depends(get_session))
     return list(session.exec(stmt))
 
 @app.get("/events/stream")
-async def stream_events(session: Session = Depends(get_session)):
+async def stream_events(
+    limit: int = 100,
+    session: Session = Depends(get_session)
+):
     async def event_generator():
         while True:
-            stmt = select(K8sEvent).order_by(K8sEvent.created_at.desc()).limit(100)
+            stmt = (
+                select(K8sEvent)
+                .order_by(K8sEvent.created_at.desc())
+                .limit(limit)
+            )
             events = list(session.exec(stmt))
 
             json_data = json.dumps(jsonable_encoder(events))
             yield f"data: {json_data}\n\n"
 
-            await asyncio.sleep(3)
+            await asyncio.sleep(2)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
