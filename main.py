@@ -14,6 +14,7 @@ from models import K8sEvent
 from k8s_watcher import watch_events_loop, stop_watcher
 from dotenv import load_dotenv
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global stop_watcher
@@ -41,9 +42,11 @@ app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok"}
+
 
 @app.get("/readyz")
 async def readyz():
@@ -54,10 +57,12 @@ async def readyz():
         return {"status": "error", "details": "db not ready"}
     return {"status": "ready"}
 
+
 @app.get("/metrics")
 def metrics():
     data = generate_latest()
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
+
 
 @app.get("/")
 def index(request: Request):
@@ -77,26 +82,24 @@ def search_events(q: str | None = None, session: Session = Depends(get_session))
     if q:
         like = f"%{q}%"
         stmt = stmt.where(
-            (K8sEvent.message.ilike(like)) |
-            (K8sEvent.name.ilike(like)) |
-            (K8sEvent.involved_name.ilike(like))
+            (K8sEvent.message.ilike(like))
+            | (K8sEvent.name.ilike(like))
+            | (K8sEvent.involved_name.ilike(like))
+            | (K8sEvent.involved_kind.ilike(like))
+            | (K8sEvent.namespace.ilike(like))
+            | (K8sEvent.reason.ilike(like))
+            | (K8sEvent.type.ilike(like))
         )
 
     stmt = stmt.order_by(K8sEvent.created_at.desc()).limit(200)
     return list(session.exec(stmt))
 
+
 @app.get("/events/stream")
-async def stream_events(
-    limit: int = 100,
-    session: Session = Depends(get_session)
-):
+async def stream_events(limit: int = 100, session: Session = Depends(get_session)):
     async def event_generator():
         while True:
-            stmt = (
-                select(K8sEvent)
-                .order_by(K8sEvent.created_at.desc())
-                .limit(limit)
-            )
+            stmt = select(K8sEvent).order_by(K8sEvent.created_at.desc()).limit(limit)
             events = list(session.exec(stmt))
 
             json_data = json.dumps(jsonable_encoder(events))
@@ -105,4 +108,3 @@ async def stream_events(
             await asyncio.sleep(2)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
