@@ -20,7 +20,29 @@ const streamBody = document.getElementById("streamBody");
 const streamFilter = document.getElementById("streamFilter");
 let latestEvents = [];
 
-const evtSource = new EventSource('/events/stream');
+let evtSource = null;
+let currentLimit = 100;
+
+function connectStream() {
+    if (evtSource) evtSource.close();
+
+    evtSource = new EventSource(`/events/stream?limit=${currentLimit}`);
+
+    evtSource.onmessage = e => {
+        latestEvents = JSON.parse(e.data);
+        renderStream();
+    };
+}
+
+// Initial verbinden
+connectStream();
+
+// Dropdown-Handler
+document.getElementById("limitSelect").addEventListener("change", e => {
+    currentLimit = parseInt(e.target.value);
+    connectStream();
+});
+
 evtSource.onmessage = e => {
     latestEvents = JSON.parse(e.data);
     renderStream();
