@@ -43,11 +43,6 @@ document.getElementById("limitSelect").addEventListener("change", e => {
     connectStream();
 });
 
-evtSource.onmessage = e => {
-    latestEvents = JSON.parse(e.data);
-    renderStream();
-};
-
 function severityClass(type) {
     if (type === "Warning") return "sev-Warning";
     if (type === "Error") return "sev-Error";
@@ -57,12 +52,17 @@ function severityClass(type) {
 function renderStream() {
     const filter = streamFilter.value.toLowerCase();
 
-    const filtered = latestEvents.filter(ev =>
-        !filter ||
-        (ev.reason && ev.reason.toLowerCase().includes(filter)) ||
-        (ev.message && ev.message.toLowerCase().includes(filter)) ||
-        (ev.involved_name && ev.involved_name.toLowerCase().includes(filter))
-    );
+    const filtered = latestEvents.filter(ev => {
+        const f = filter;
+
+        return !f ||
+            (ev.type && ev.type.toLowerCase().includes(f)) ||
+            (ev.reason && ev.reason.toLowerCase().includes(f)) ||
+            (ev.message && ev.message.toLowerCase().includes(f)) ||
+            (ev.involved_name && ev.involved_name.toLowerCase().includes(f)) ||
+            (ev.involved_kind && ev.involved_kind.toLowerCase().includes(f)) ||
+            (ev.namespace && ev.namespace.toLowerCase().includes(f));
+    });
 
     const pageData = paginate(filtered);
 
