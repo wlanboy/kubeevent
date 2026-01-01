@@ -26,6 +26,19 @@ spec:
             - name: env-file 
               mountPath: /app/.env 
               subPath: .env
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
       volumes:
         - name: tmp-volume
           persistentVolumeClaim:
