@@ -47,11 +47,11 @@ serviceAccount:
   name: kubeevents
 
 watchNamespaces:
-  - demo
+  - kubeevent
   - simpleservice
 
 envConfig:
   enabled: true
   data: |
     DB_PATH=/app/data/events.db
-    POD_NAMESPACE=demo,simpleservice
+    POD_NAMESPACE=kubeevent,simpleservice
