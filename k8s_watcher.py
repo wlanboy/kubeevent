@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from kubernetes import client, config, watch
 from sqlmodel import Session, select
-from metrics import events_total, events_by_type, events_by_namespace, watch_errors
+from metrics import events_total, events_by_type, events_by_namespace, events_by_namespace_type, watch_errors
 from db import engine
 from models import K8sEvent
 
@@ -52,6 +52,7 @@ def upsert_event(session: Session, ev):
         events_total.inc() 
         events_by_type.labels(obj.type).inc() 
         events_by_namespace.labels(obj.namespace).inc()
+        events_by_namespace_type.labels(obj.namespace, obj.type).inc()
         session.add(obj)
 
     session.commit()
