@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from kubernetes import client, config, watch
 from sqlmodel import Session, select
-from metrics import events_total, events_by_type, events_by_namespace, events_by_namespace_type, watch_errors
+from metrics import events_total, events_by_type, events_by_namespace, events_by_namespace_type, watch_errors, events_by_involved, events_by_pod, events_by_deployment
 from db import engine
 from models import K8sEvent
 
@@ -32,6 +32,43 @@ def upsert_event(session: Session, ev):
     def to_dt(ts):
         return ts if isinstance(ts, datetime) else None
 
+    # Extract labels from Kubernetes event object
+    namespace = ev.metadata.namespace or "default"
+    event_type = ev.type or "Unknown"
+    kind = getattr(ev.involved_object, "kind", "Unknown")
+    involved_name = getattr(ev.involved_object, "name", "Unknown")
+    reason = ev.reason or "Unknown"
+    component = getattr(ev, "reporting_component", "Unknown")
+
+    # Increment metrics ALWAYS (new + updated events)
+    events_total.inc()
+    events_by_type.labels(event_type).inc()
+    events_by_namespace.labels(namespace).inc()
+    events_by_namespace_type.labels(namespace, event_type).inc()
+
+    events_by_involved.labels(
+        namespace=namespace,
+        type=event_type,
+        kind=kind,
+        involved_name=involved_name,
+        reason=reason,
+        component=component
+    ).inc()
+
+    if kind == "Pod":
+        events_by_pod.labels(
+            namespace=namespace,
+            pod=involved_name,
+            type=event_type
+        ).inc()
+
+    if kind == "Deployment":
+        events_by_deployment.labels(
+            namespace=namespace,
+            deployment=involved_name,
+            type=event_type
+        ).inc()
+
     if existing:
         existing.last_timestamp = to_dt(ev.last_timestamp) or existing.last_timestamp
         existing.count = ev.count or existing.count
@@ -39,24 +76,18 @@ def upsert_event(session: Session, ev):
         obj = K8sEvent(
             uid=uid,
             name=ev.metadata.name,
-            namespace=ev.metadata.namespace,
-            reason=ev.reason,
-            type=ev.type,
+            namespace=namespace,
+            reason=reason,
+            type=event_type,
             message=ev.message,
-            involved_kind=getattr(ev.involved_object, "kind", None),
-            involved_name=getattr(ev.involved_object, "name", None),
+            involved_kind=kind,
+            involved_name=involved_name,
             first_timestamp=to_dt(ev.first_timestamp),
             last_timestamp=to_dt(ev.last_timestamp),
         )
-
-        events_total.inc() 
-        events_by_type.labels(obj.type).inc() 
-        events_by_namespace.labels(obj.namespace).inc()
-        events_by_namespace_type.labels(obj.namespace, obj.type).inc()
         session.add(obj)
 
     session.commit()
-
 
 def handle_event(event):
     ev = event["object"]

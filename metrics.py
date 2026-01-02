@@ -8,5 +8,20 @@ events_by_namespace_type = Counter(
     "Events by namespace and type",
     ["namespace", "type"]
 )
+events_by_involved = Counter(
+    "kubeevents_involved_total",
+    "Events by involved object",
+    ["namespace", "type", "kind", "involved_name", "reason", "component"]
+)
+events_by_deployment = Counter(
+    "kubeevents_deployment_total",
+    "Events by deployment",
+    ["namespace", "deployment", "type"]
+)
+events_by_pod = Counter(
+    "kubeevents_pod_total",
+    "Events by pod",
+    ["namespace", "pod", "type"]
+)
 watch_errors = Counter("kubeevents_watch_errors_total", "Number of watch errors")
 watch_restarts = Counter("kubeevents_watch_restarts_total", "Number of watcher restarts")
