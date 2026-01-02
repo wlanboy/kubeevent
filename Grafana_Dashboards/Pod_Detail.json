@@ -1,0 +1,81 @@
+{
+  "title": "Pod Detail",
+  "uid": "kube-pod-detail",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Datasource"
+      },
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": "$datasource",
+        "label": "Namespace",
+        "query": "label_values(kubeevents_pod_total, namespace)"
+      },
+      {
+        "name": "pod",
+        "type": "query",
+        "datasource": "$datasource",
+        "label": "Pod",
+        "query": "label_values(kubeevents_pod_total{namespace=\"$namespace\"}, pod)"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Events for Pod",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 3 },
+      "targets": [
+        {
+          "expr": "sum(kubeevents_pod_total{namespace=\"$namespace\", pod=\"$pod\"})"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events per Second for Pod",
+      "datasource": "$datasource",
+      "gridPos": { "x": 4, "y": 0, "w": 20, "h": 6 },
+      "targets": [
+        {
+          "expr": "rate(kubeevents_pod_total{namespace=\"$namespace\", pod=\"$pod\"}[5m])",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events by Reason (Pod)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 6, "w": 24, "h": 6 },
+      "targets": [
+        {
+          "expr": "rate(kubeevents_involved_total{namespace=\"$namespace\", involved_name=\"$pod\", kind=\"Pod\"}[5m])",
+          "legendFormat": "{{reason}} / {{type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events by Component (Pod)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 6 },
+      "targets": [
+        {
+          "expr": "rate(kubeevents_involved_total{namespace=\"$namespace\", involved_name=\"$pod\", kind=\"Pod\"}[5m])",
+          "legendFormat": "{{component}} / {{reason}}"
+        }
+      ]
+    }
+  ]
+}

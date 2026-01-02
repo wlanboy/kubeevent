@@ -1,0 +1,90 @@
+{
+  "title": "Kubernetes Workload Analysis",
+  "uid": "kube-workload-analysis",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Datasource"
+      },
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": "$datasource",
+        "label": "Namespace",
+        "query": "label_values(kubeevents_pod_total, namespace)",
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "name": "type",
+        "type": "query",
+        "datasource": "$datasource",
+        "label": "Event Type",
+        "query": "label_values(kubeevents_pod_total, type)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Events per Pod (5m Increase)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 7 },
+      "targets": [
+        {
+          "expr": "increase(kubeevents_pod_total{namespace=~\"$namespace\", type=~\"$type\"}[5m])",
+          "legendFormat": "{{namespace}} / {{pod}} / {{type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Warnings per Pod (5m Increase)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 7, "w": 24, "h": 7 },
+      "targets": [
+        {
+          "expr": "increase(kubeevents_pod_total{namespace=~\"$namespace\", type=\"Warning\"}[5m])",
+          "legendFormat": "{{namespace}} / {{pod}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events per Deployment (5m Increase)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 7 },
+      "targets": [
+        {
+          "expr": "increase(kubeevents_deployment_total{namespace=~\"$namespace\", type=~\"$type\"}[5m])",
+          "legendFormat": "{{namespace}} / {{deployment}} / {{type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Deployment Normal vs Warning (5m Increase)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 7 },
+      "targets": [
+        {
+          "expr": "increase(kubeevents_deployment_total{namespace=~\"$namespace\", type=\"Normal\"}[5m])",
+          "legendFormat": "{{namespace}} / {{deployment}} / Normal"
+        },
+        {
+          "expr": "increase(kubeevents_deployment_total{namespace=~\"$namespace\", type=\"Warning\"}[5m])",
+          "legendFormat": "{{namespace}} / {{deployment}} / Warning"
+        }
+      ]
+    }
+  ]
+}
