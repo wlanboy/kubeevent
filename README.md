@@ -6,6 +6,8 @@ This project provides:
 - Prometheus metrics for monitoring event activity
 - A clean, self‑contained solution for debugging clusters and understanding workload behavior
 
+![K8s Events](screenshots/kubeevents.png)
+
 ## Features
 ### Real‑time Event Stream
 - Uses Kubernetes’ watch API
