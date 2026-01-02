@@ -1,0 +1,112 @@
+{
+  "title": "Kubernetes Event Monitoring",
+  "uid": "kube-events-main",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Datasource"
+      },
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": "$datasource",
+        "label": "Namespace",
+        "query": "label_values(kubeevents_namespace_total, namespace)",
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "name": "type",
+        "type": "query",
+        "datasource": "$datasource",
+        "label": "Event Type",
+        "query": "label_values(kubeevents_type_total, type)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Events",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 3 },
+      "targets": [
+        { "expr": "kubeevents_total" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events per Second (Rate + Spike Detection)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 4, "y": 0, "w": 20, "h": 6 },
+      "targets": [
+        { "expr": "rate(kubeevents_total[5m])", "legendFormat": "Events/s" },
+        { "expr": "idelta(kubeevents_total[5m])", "legendFormat": "Spike Indicator" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events by Type (Rate)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 6, "w": 24, "h": 6 },
+      "targets": [
+        { "expr": "rate(kubeevents_type_total{type=~\"$type\"}[5m])", "legendFormat": "{{type}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Namespace × Type (Time Series Matrix)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(kubeevents_namespace_type_total{namespace=~\"$namespace\", type=~\"$type\"}[5m])",
+          "legendFormat": "{{namespace}} / {{type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Warning Rate per Namespace (Spike Detection)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 6 },
+      "targets": [
+        {
+          "expr": "rate(kubeevents_namespace_type_total{type=\"Warning\", namespace=~\"$namespace\"}[5m])",
+          "legendFormat": "{{namespace}}"
+        },
+        {
+          "expr": "idelta(kubeevents_namespace_type_total{type=\"Warning\", namespace=~\"$namespace\"}[5m])",
+          "legendFormat": "Spike Indicator"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Watcher Errors",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 26, "w": 4, "h": 3 },
+      "targets": [
+        { "expr": "kubeevents_watch_errors_total" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Watcher Restarts",
+      "datasource": "$datasource",
+      "gridPos": { "x": 4, "y": 26, "w": 4, "h": 3 },
+      "targets": [
+        { "expr": "kubeevents_watch_restarts_total" }
+      ]
+    }
+  ]
+}
