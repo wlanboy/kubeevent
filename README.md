@@ -81,3 +81,9 @@ kubectl scale deployment demoapp -n kubeevent --replicas=2
 kubectl scale deployment demoapp -n kubeevent --replicas=0
 kubectl delete deployment demoapp -n kubeevent
 ```
+
+## Grafana Dashboard screenshots
+![Event Dashboard](screenshots/event-dashboard.png)
+![Deployment Dashboard](screenshots/deployment-dashboard.png)
+![Pod Dashboard](screenshots/pod-dashboard.png)
+
