@@ -55,4 +55,4 @@ envConfig:
   enabled: true
   data: |
     DB_PATH=/app/data/events.db
-    POD_NAMESPACE=kubeevent,simpleservice
+    POD_NAMESPACE=kubeevent,simpleservice,randomfail
