@@ -74,13 +74,22 @@ def metrics():
     data = generate_latest()
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
+@app.get('/favicon.ico', include_in_schema=False)
+async def favicon():
+    svg = '''
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text y=".9em" font-size="90">☸️</text>
+    </svg>
+    '''
+    return Response(content=svg, media_type="image/svg+xml")
+
 @app.get("/")
 def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/events/latest")
 def latest_events(session: Session = Depends(get_session)):
-    stmt = select(K8sEvent).order_by(K8sEvent.created_at.desc()).limit(20)
+    stmt = select(K8sEvent).order_by(K8sEvent.created_at.desc()).limit(100)
     return list(session.exec(stmt).all())
 
 @app.get("/events/search")
