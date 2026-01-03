@@ -49,6 +49,7 @@ serviceAccount:
 watchNamespaces:
   - kubeevent
   - simpleservice
+  - randomfail
 
 envConfig:
   enabled: true
