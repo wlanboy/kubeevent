@@ -4,10 +4,10 @@ import time
 from typing import List
 from kubernetes import client, config, watch
 from sqlmodel import Session
-from sqlalchemy.dialects.sqlite import insert
 
 from db import engine
 from models import K8sEvent
+from sqlmodel import select
 from metrics import (
     events_total, events_by_type, events_by_namespace, 
     events_by_namespace_type, watch_errors, watch_restarts, 
@@ -70,26 +70,47 @@ def process_metrics(ev):
         ).inc()
 
 def sync_db_save(events: List[any]):
+    if not events:
+        return
+
     with Session(engine) as session:
         for ev in events:
             process_metrics(ev)
-            
-            # Wir erstellen IMMER ein neues Objekt
-            obj = K8sEvent(
-                uid=ev.metadata.uid,
-                name=ev.metadata.name,
-                namespace=ev.metadata.namespace or "default",
-                reason=ev.reason,
-                type=ev.type,
-                message=ev.message,
-                involved_kind=getattr(ev.involved_object, "kind", None),
-                involved_name=getattr(ev.involved_object, "name", None),
-                first_timestamp=ev.first_timestamp,
-                last_timestamp=ev.last_timestamp,
-                count=ev.count or 1
+
+            uid = ev.metadata.uid
+            current_count = ev.count or 1
+
+            # Prüfen, ob GENAU dieses Event (UID + Count) schon existiert
+            # Das verhindert Duplikate bei Re-Streams, erlaubt aber 
+            # neue Einträge, wenn der Counter hochgeht.
+            stmt = select(K8sEvent).where(
+                K8sEvent.uid == uid, 
+                K8sEvent.count == current_count
             )
-            session.add(obj)
-        session.commit()
+            existing = session.exec(stmt).first()
+
+            if not existing:
+                # Nur wenn dieser Stand neu ist, legen wir einen Datensatz an
+                obj = K8sEvent(
+                    uid=uid,
+                    name=ev.metadata.name,
+                    namespace=ev.metadata.namespace or "default",
+                    reason=ev.reason,
+                    type=ev.type,
+                    message=ev.message,
+                    involved_kind=getattr(ev.involved_object, "kind", None),
+                    involved_name=getattr(ev.involved_object, "name", None),
+                    first_timestamp=ev.first_timestamp,
+                    last_timestamp=ev.last_timestamp,
+                    count=current_count
+                )
+                session.add(obj)
+        
+        try:
+            session.commit()
+        except Exception as e:
+            print(f"Fehler beim Speichern: {e}")
+            session.rollback()
 
 async def db_worker():
     while not stop_watcher:
