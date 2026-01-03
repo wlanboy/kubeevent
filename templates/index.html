@@ -6,19 +6,19 @@
     <title>Kubernetes Events Viewer</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <style>
-        .sev-Normal {
-            color: #4caf50;
-            font-weight: bold;
+        main.container-fluid {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: var(--pico-spacing);
         }
 
-        .sev-Warning {
-            color: #ff9800;
-            font-weight: bold;
+        .table-container {
+            overflow-x: auto;
         }
 
-        .sev-Error {
-            color: #f44336;
-            font-weight: bold;
+        table {
+            width: 100%;
+            border-collapse: collapse;
         }
 
         .tab-content {
@@ -31,6 +31,11 @@
 
         .tab.active {
             font-weight: bold;
+        }
+
+        nav ul#streamPagination,
+        nav ul#searchPagination {
+            justify-content: center;
         }
     </style>
 </head>
@@ -81,7 +86,7 @@
                 </thead>
                 <tbody id="streamBody"></tbody>
             </table>
-            <nav>
+            <nav aria-label="Pagination">
                 <ul id="streamPagination"></ul>
             </nav>
 
@@ -106,7 +111,7 @@
                 <tbody id="searchResults"></tbody>
             </table>
 
-            <nav>
+            <nav aria-label="Pagination">
                 <ul id="searchPagination"></ul>
             </nav>
 
