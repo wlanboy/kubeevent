@@ -51,16 +51,23 @@
 
         <!-- STREAM TAB -->
         <section id="tab-stream" class="tab-content active">
-            <input id="streamFilter" placeholder="Filter (Type, Reason, Message, Name, Object)">
-            <label for="limitSelect">Anzahl Events:</label>
-            <select id="limitSelect">
-                <option value="20">20</option>
-                <option value="50">50</option>
-                <option value="100" selected>100</option>
-                <option value="200">200</option>
-                <option value="500">500</option>
-                <option value="1000">1000</option>
-            </select>
+            <fieldset role="group">
+                <input id="streamFilter" type="search" placeholder="Filter (Type, Reason, Message, Name, Namespace...)">
+
+                <select id="limitSelect" style="max-width: 150px;">
+                    <option value="20">20 Events</option>
+                    <option value="50">50 Events</option>
+                    <option value="100" selected>100 Events</option>
+                    <option value="200">200 Events</option>
+                    <option value="500">500 Events</option>
+                    <option value="1000">1000 Events</option>
+                </select>
+
+                <button class="outline" onclick="document.getElementById('streamFilter').value=''; renderStream();"
+                    style="width: auto;">
+                    Reset
+                </button>
+            </fieldset>
 
             <table id="streamTable">
                 <thead>
@@ -82,9 +89,10 @@
 
         <!-- SEARCH TAB -->
         <section id="tab-search" class="tab-content">
-            <input id="searchInput" placeholder="Suchtext...">
-            <button id="searchBtn">Suchen</button>
-
+            <fieldset role="group">
+                <input id="searchInput" placeholder="Suchtext...">
+                <button id="searchBtn">Suchen</button>
+            </fieldset>
             <table>
                 <thead>
                     <tr>
@@ -107,7 +115,9 @@
         <!-- STATS TAB -->
         <section id="tab-stats" class="tab-content">
             <h3>Statistiken</h3>
-            <ul id="statsList"></ul>
+            <div id="statsList" style="margin-bottom: 2rem;">
+                <ul id="statsList"></ul>
+            </div>
         </section>
 
     </main>
