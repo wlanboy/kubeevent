@@ -1,78 +1,157 @@
 import asyncio
-import json
+import os
+import signal
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Depends, Response, Query
+
+from fastapi import FastAPI, Request, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import StreamingResponse
-from sqlmodel import Session, select, func
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
-from db import init_db, get_session, engine
-from models import K8sEvent
-from k8s_watcher import watch_events_loop, stop_watcher 
+from sqlmodel import Session
+from db import init_db, engine
+from k8s_watcher import watch_events_loop
+from runtime import shutdown_event
+import runtime  # für stop_watcher
+from routes import router
+
 from dotenv import load_dotenv
+import aiocron
+
+
+# ============================================================
+# SIGNAL HANDLING
+# ============================================================
+
+def handle_sigterm(*_):
+    print("[SIGNAL] SIGTERM/SIGINT received → triggering shutdown...")
+    shutdown_event.set()
+
+signal.signal(signal.SIGTERM, handle_sigterm)
+signal.signal(signal.SIGINT, handle_sigterm)
+
+
+# ============================================================
+# RETENTION JOB (Cron)
+# ============================================================
+
+async def retention_job():
+    print("[CRON] Running retention job...")
+    with Session(engine) as session:
+        from sqlalchemy import text
+        stmt = text("DELETE FROM k8sevent WHERE created_at < datetime('now', '-7 days')")
+        session.execute(stmt)
+        session.commit()
+    print("[CRON] Retention job complete")
+
+
+async def retention_worker():
+    print("[TASK] retention_worker started")
+
+    cron = aiocron.crontab("0 * * * *", func=retention_job)
+
+    try:
+        await shutdown_event.wait()
+    finally:
+        cron.stop()
+        print("[TASK] retention_worker stopped")
+
+
+# ============================================================
+# TASKGROUP RUNNER
+# ============================================================
+
+taskgroup_task: asyncio.Task | None = None
+
+async def run_taskgroup():
+    print("[TASKGROUP] Starting TaskGroup...")
+
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(watch_events_loop())
+        print("[TASKGROUP] watcher_task started")
+
+        tg.create_task(retention_worker())
+        print("[TASKGROUP] retention_worker started")
+
+        print("[TASKGROUP] Waiting for shutdown_event...")
+        await shutdown_event.wait()
+
+        print("[TASKGROUP] shutdown_event triggered → TaskGroup will cancel tasks")
+
+    print("[TASKGROUP] TaskGroup exited cleanly")
+
+
+# ============================================================
+# LIFESPAN
+# ============================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import k8s_watcher 
-    
+    print("[LIFESPAN] Startup initiated")
+
+    # Ensure DB directory exists
+    DB_PATH = os.getenv("DB_PATH", "data/events.db")
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+        print(f"[LIFESPAN] Ensured DB directory exists: {db_dir}")
+
     load_dotenv(override=False)
     init_db()
+    print("[LIFESPAN] Database initialized")
 
-    watcher_task = asyncio.create_task(watch_events_loop())
-    retention_task = asyncio.create_task(retention_worker())
+    # Start TaskGroup in background
+    global taskgroup_task
+    taskgroup_task = asyncio.create_task(run_taskgroup())
+    print("[LIFESPAN] TaskGroup started in background")
 
-    yield
+    print("[LIFESPAN] Startup complete")
+    yield  # REST API becomes available here
 
-    # Shutdown-Logik
-    k8s_watcher.stop_watcher = True
-    print("Stopping watcher tasks...")
-    watcher_task.cancel()
-    retention_task.cancel()
-    try:
-        await watcher_task
-    except asyncio.CancelledError:
-        print("Watcher task cancelled successfully.")
+    # ============================================================
+    # SHUTDOWN
+    # ============================================================
 
-async def retention_worker():
-    """Löscht alle Events, die älter als 7 Tage sind."""
-    while not stop_watcher:
+    print("[LIFESPAN] Shutdown initiated")
+
+    # global stop_watcher setzen
+    runtime.stop_watcher = True
+    shutdown_event.set()
+
+    print("[LIFESPAN] Waiting for TaskGroup to finish...")
+
+    # FIX: TaskGroup nur awaiten, wenn sie noch läuft
+    if taskgroup_task and not taskgroup_task.done():
         try:
-            with Session(engine) as session:
-                from sqlalchemy import text
-                # Beispiel: Alles älter als 7 Tage löschen
-                stmt = text("DELETE FROM k8sevent WHERE created_at < datetime('now', '-7 days')")
-                session.execute(stmt)
-                session.commit()
-            await asyncio.sleep(3600) # Einmal pro Stunde prüfen
-        except Exception as e:
-            print(f"Retention Error: {e}")
-            await asyncio.sleep(60)
+            await asyncio.wait_for(taskgroup_task, timeout=5)
+        except asyncio.TimeoutError:
+            print("[LIFESPAN] TaskGroup timeout — forcing shutdown")
+    else:
+        print("[LIFESPAN] TaskGroup already finished")
+
+    print("[LIFESPAN] Shutdown complete")
+
+
+# ============================================================
+# FASTAPI APP
+# ============================================================
 
 app = FastAPI(lifespan=lifespan)
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/healthz")
-async def healthz():
-    return {"status": "ok"}
+# Routen aus routes.py einbinden
+app.include_router(router)
 
-@app.get("/readyz")
-async def readyz():
-    try:
-        with Session(engine) as session:
-            session.exec(select(1)) # SQLModel-konformer Check
-    except Exception:
-        return {"status": "error", "details": "db not ready"}
-    return {"status": "ready"}
 
-@app.get("/metrics")
-def metrics():
-    data = generate_latest()
-    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
+# ============================================================
+# ROOT + FAVICON
+# ============================================================
+
+@app.get("/")
+def index(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
 
 @app.get('/favicon.ico', include_in_schema=False)
 async def favicon():
@@ -82,62 +161,3 @@ async def favicon():
     </svg>
     '''
     return Response(content=svg, media_type="image/svg+xml")
-
-@app.get("/")
-def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
-
-@app.get("/events/latest")
-def latest_events(session: Session = Depends(get_session)):
-    stmt = select(K8sEvent).order_by(K8sEvent.created_at.desc()).limit(100)
-    return list(session.exec(stmt).all())
-
-@app.get("/events/search")
-def search_events(
-    q: str | None = None,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=200),
-    session: Session = Depends(get_session)
-):
-    stmt = select(K8sEvent)
-
-    if q:
-        like = f"%{q}%"
-        stmt = stmt.where(
-            (K8sEvent.message.ilike(like)) |
-            (K8sEvent.name.ilike(like)) |
-            (K8sEvent.involved_name.ilike(like)) |
-            (K8sEvent.involved_kind.ilike(like)) |
-            (K8sEvent.namespace.ilike(like)) |
-            (K8sEvent.reason.ilike(like)) |
-            (K8sEvent.type.ilike(like))
-        )
-
-    # --- Count total ---
-    total = session.exec(select(func.count()).select_from(stmt.subquery())).one()
-
-    # --- Pagination ---
-    offset = (page - 1) * page_size
-    stmt = stmt.order_by(K8sEvent.created_at.desc()).offset(offset).limit(page_size)
-    items = list(session.exec(stmt).all())
-
-    return {
-        "items": items,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "pages": (total + page_size - 1) // page_size
-    }
-
-@app.get("/events/stream")
-async def stream_events(limit: int = 100, session: Session = Depends(get_session)):
-    async def event_generator():
-        while True:
-            stmt = select(K8sEvent).order_by(K8sEvent.created_at.desc()).limit(limit)
-            events = list(session.exec(stmt).all())
-
-            json_data = json.dumps(jsonable_encoder(events))
-            yield f"data: {json_data}\n\n"
-            await asyncio.sleep(2)
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
