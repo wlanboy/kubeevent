@@ -9,6 +9,8 @@ COPY db.py .
 COPY models.py .
 COPY metrics.py .
 COPY k8s_watcher.py .
+COPY runtime.py .
+COPY routes.py .
 COPY main.py .
 COPY static/ ./static/
 COPY templates/ ./templates/
