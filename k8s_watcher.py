@@ -1,49 +1,58 @@
 import os
 import asyncio
-import time
 from typing import List
+
 from kubernetes import client, config, watch
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from db import engine
 from models import K8sEvent
-from sqlmodel import select
 from metrics import (
-    events_total, events_by_type, events_by_namespace, 
-    events_by_namespace_type, watch_errors, watch_restarts, 
+    events_total, events_by_type, events_by_namespace,
+    events_by_namespace_type, watch_errors, watch_restarts,
     events_by_involved, events_by_pod, events_by_deployment
 )
+import runtime
 
-stop_watcher = False
-event_queue = asyncio.Queue()
+runtime.stop_watcher = False
+event_queue: asyncio.Queue = asyncio.Queue()
+
+# ============================================================
+# HELFER
+# ============================================================
 
 def get_namespaces() -> List[str]:
     raw = os.getenv("POD_NAMESPACE", "demo")
-    return [ns.strip() for ns in raw.split(",")]
+    namespaces = [ns.strip() for ns in raw.split(",") if ns.strip()]
+    print(f"[WATCH] Using namespaces: {namespaces}")
+    return namespaces
 
 def init_k8s():
     try:
         config.load_incluster_config()
+        print("[WATCH] Loaded in-cluster Kubernetes config")
     except Exception:
         config.load_kube_config()
+        print("[WATCH] Loaded local kubeconfig")
+
+
+# ============================================================
+# METRICS + DB SAVE
+# ============================================================
 
 def process_metrics(ev):
-    """Aktualisiert alle Metriken exakt nach deiner metrics.py Definition."""
     namespace = ev.metadata.namespace or "default"
     event_type = ev.type or "Unknown"
     kind = getattr(ev.involved_object, "kind", "Unknown")
     involved_name = getattr(ev.involved_object, "name", "Unknown")
     reason = ev.reason or "Unknown"
-    # 'reporting_component' ist das Feld für 'component' in K8s Events
     component = getattr(ev, "reporting_component", "Unknown") or "Unknown"
 
-    # 1. Einfache Counter
     events_total.inc()
     events_by_type.labels(type=event_type).inc()
     events_by_namespace.labels(namespace=namespace).inc()
     events_by_namespace_type.labels(namespace=namespace, type=event_type).inc()
 
-    # 2. Involved Object Counter (Alle 6 Labels müssen hier rein!)
     events_by_involved.labels(
         namespace=namespace,
         type=event_type,
@@ -53,26 +62,18 @@ def process_metrics(ev):
         component=component
     ).inc()
 
-    # 3. Spezifische Counter für Pods
     if kind == "Pod":
-        events_by_pod.labels(
-            namespace=namespace,
-            pod=involved_name,
-            type=event_type
-        ).inc()
+        events_by_pod.labels(namespace=namespace, pod=involved_name, type=event_type).inc()
 
-    # 4. Spezifische Counter für Deployments (Achtung: involved_name ist hier der Name)
     if kind == "Deployment":
-        events_by_deployment.labels(
-            namespace=namespace,
-            deployment=involved_name,
-            type=event_type
-        ).inc()
+        events_by_deployment.labels(namespace=namespace, deployment=involved_name, type=event_type).inc()
 
-def sync_db_save(events: List[any]):
+
+def sync_db_save(events: list):
     if not events:
         return
 
+    print(f"[DB] Saving batch of {len(events)} events")
     with Session(engine) as session:
         for ev in events:
             process_metrics(ev)
@@ -80,17 +81,13 @@ def sync_db_save(events: List[any]):
             uid = ev.metadata.uid
             current_count = ev.count or 1
 
-            # Prüfen, ob GENAU dieses Event (UID + Count) schon existiert
-            # Das verhindert Duplikate bei Re-Streams, erlaubt aber 
-            # neue Einträge, wenn der Counter hochgeht.
             stmt = select(K8sEvent).where(
-                K8sEvent.uid == uid, 
+                K8sEvent.uid == uid,
                 K8sEvent.count == current_count
             )
             existing = session.exec(stmt).first()
 
             if not existing:
-                # Nur wenn dieser Stand neu ist, legen wir einen Datensatz an
                 obj = K8sEvent(
                     uid=uid,
                     name=ev.metadata.name,
@@ -105,62 +102,144 @@ def sync_db_save(events: List[any]):
                     count=current_count
                 )
                 session.add(obj)
-        
+
         try:
             session.commit()
+            print("[DB] Batch committed")
         except Exception as e:
-            print(f"Fehler beim Speichern: {e}")
+            print(f"[DB] Error during commit: {e}")
             session.rollback()
 
+
+# ============================================================
+# ADAPTIVER, NICHT-BLOCKIERENDER DB WORKER
+# ============================================================
+
 async def db_worker():
-    while not stop_watcher:
+    print("[DB] worker started")
+
+    MAX_DELAY = 0.2  # max 200ms
+    MAX_BATCH = 500  # adaptive upper bound
+
+    while not runtime.stop_watcher:
         try:
-            ev = await event_queue.get()
+            # Warte auf erstes Event
+            try:
+                ev = await asyncio.wait_for(event_queue.get(), timeout=1)
+            except asyncio.TimeoutError:
+                continue
+
             batch = [ev]
-            # Kurzes Window zum Sammeln
-            await asyncio.sleep(0.1) 
-            while not event_queue.empty() and len(batch) < 100:
-                batch.append(event_queue.get_nowait())
-            
+
+            # adaptives Sammeln
+            start = asyncio.get_event_loop().time()
+
+            while len(batch) < MAX_BATCH:
+                remaining = MAX_DELAY - (asyncio.get_event_loop().time() - start)
+                if remaining <= 0:
+                    break
+
+                try:
+                    ev = await asyncio.wait_for(event_queue.get(), timeout=remaining)
+                    batch.append(ev)
+                except asyncio.TimeoutError:
+                    break
+
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, sync_db_save, batch)
-            
-            for _ in range(len(batch)):
-                event_queue.task_done()
-        except Exception as e:
-            print(f"Worker Error: {e}")
-            await asyncio.sleep(1)
 
-def sync_watch_namespace(namespace: str, loop: asyncio.AbstractEventLoop):
+            for _ in batch:
+                event_queue.task_done()
+
+        except asyncio.CancelledError:
+            print("[DB] worker cancelled")
+            break
+        except Exception as e:
+            print(f"[DB] worker error: {e}")
+
+    print("[DB] worker stopped")
+
+
+# ============================================================
+# SMARTER WATCHER MIT BACKOFF + HEARTBEAT
+# ============================================================
+
+async def watch_namespace(namespace: str):
+    print(f"[WATCH] starting watcher for namespace={namespace}")
+
     v1 = client.CoreV1Api()
     w = watch.Watch()
     resource_version = None
-    while not stop_watcher:
+
+    loop = asyncio.get_running_loop()
+    backoff = 1  # Start bei 1s
+
+    while not runtime.stop_watcher:
         try:
-            stream = w.stream(v1.list_namespaced_event, namespace=namespace, 
-                              resource_version=resource_version, timeout_seconds=300)
-            for event in stream:
-                if stop_watcher: break
+            def _stream_once():
+                return list(w.stream(
+                    v1.list_namespaced_event,
+                    namespace=namespace,
+                    resource_version=resource_version,
+                    timeout_seconds=5
+                ))
+
+            events = await loop.run_in_executor(None, _stream_once)
+
+            # Erfolgreich → Backoff resetten
+            backoff = 1
+
+            for event in events:
+                if runtime.stop_watcher:
+                    break
+
                 obj = event["object"]
                 resource_version = obj.metadata.resource_version
-                loop.call_soon_threadsafe(event_queue.put_nowait, obj)
-        except Exception:
+
+                try:
+                    event_queue.put_nowait(obj)
+                except asyncio.QueueFull:
+                    print("[WATCH] queue full, dropping event")
+
+        except asyncio.CancelledError:
+            print(f"[WATCH] watcher for ns={namespace} cancelled")
+            break
+
+        except Exception as e:
             watch_errors.inc()
-            time.sleep(5)
             watch_restarts.inc()
+            print(f"[WATCH] error in ns={namespace}: {e}")
+
+            # Exponentielles Backoff
+            print(f"[WATCH] reconnecting in {backoff}s...")
+            try:
+                await asyncio.wait_for(asyncio.sleep(backoff), timeout=backoff)
+            except asyncio.CancelledError:
+                break
+
+            backoff = min(backoff * 2, 30)
+
+    print(f"[WATCH] watcher for ns={namespace} stopped")
+
+
+# ============================================================
+# HAUPTSCHLEIFE
+# ============================================================
 
 async def watch_events_loop():
+    print("[WATCH] watch_events_loop starting...")
     init_k8s()
     namespaces = get_namespaces()
-    loop = asyncio.get_running_loop()
-    
-    # DB Worker starten
+
     worker_task = asyncio.create_task(db_worker())
-    
-    # Watcher starten
-    watcher_tasks = []
-    for ns in namespaces:
-        t = loop.run_in_executor(None, sync_watch_namespace, ns, loop)
-        watcher_tasks.append(t)
-    
-    await asyncio.gather(*watcher_tasks, worker_task)
+    watcher_tasks = [
+        asyncio.create_task(watch_namespace(ns))
+        for ns in namespaces
+    ]
+
+    try:
+        await asyncio.gather(worker_task, *watcher_tasks)
+    except asyncio.CancelledError:
+        print("[WATCH] watch_events_loop cancelled")
+    finally:
+        print("[WATCH] watch_events_loop exiting")
