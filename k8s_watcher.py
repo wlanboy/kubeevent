@@ -168,75 +168,98 @@ async def watch_namespace(namespace: str):
     print(f"[WATCH] starting watcher for namespace={namespace}")
 
     v1 = client.CoreV1Api()
-    w = watch.Watch()
-    resource_version = None
-
     loop = asyncio.get_running_loop()
-    backoff = 1  # Start bei 1s
+    backoff = 1
 
+    # ============================================================
+    # 1) Initialer LIST → resourceVersion bestimmen
+    # ============================================================
+    try:
+        initial = await loop.run_in_executor(
+            None, lambda: v1.list_namespaced_event(namespace=namespace)
+        )
+        resource_version = initial.metadata.resource_version
+        print(f"[WATCH] initial LIST for ns={namespace}, rv={resource_version}")
+    except Exception as e:
+        print(f"[WATCH] initial LIST failed for ns={namespace}: {e}")
+        resource_version = None
+
+    # ============================================================
+    # 2) Hauptschleife
+    # ============================================================
     while not runtime.stop_watcher:
         try:
-            def _stream_once():
+            # EIN Watch-Durchlauf (nicht blockierend, da im Executor)
+            def _watch_once(rv):
+                w = watch.Watch()
                 return list(w.stream(
                     v1.list_namespaced_event,
                     namespace=namespace,
-                    resource_version=resource_version,
-                    timeout_seconds=5
+                    resource_version=rv,
+                    timeout_seconds=30
                 ))
 
-            events = await loop.run_in_executor(None, _stream_once)
-            num_events = len(events)
-            # Erfolgreich → Backoff resetten
-            print(f"[WATCH] Received {num_events} events from stream for ns={namespace}")
-            
-            if len(events) == 0:
-                # Stream ist tot → reconnect
+            events = await loop.run_in_executor(None, lambda: _watch_once(resource_version))
+
+            if not events:
                 print(f"[WATCH] empty stream for ns={namespace}, reconnecting...")
                 await asyncio.sleep(1)
                 continue
 
+            print(f"[WATCH] Received {len(events)} events from ns={namespace}")
+
+            # Backoff resetten
             backoff = 1
 
-            for event in events:
-                if runtime.stop_watcher:
-                    break
-
-                obj = event["object"]
+            # Events verarbeiten
+            for ev in events:
+                obj = ev["object"]
                 resource_version = obj.metadata.resource_version
 
                 try:
                     event_queue.put_nowait(obj)
                 except asyncio.QueueFull:
-                    print("[WATCH] queue full, dropping event")
+                    print(f"[WATCH] queue full, dropping event in ns={namespace}")
 
+        # ============================================================
+        # 410 Gone → ResourceVersion zu alt → neuen LIST-Sync machen
+        # ============================================================
         except client.exceptions.ApiException as e:
-            # SPEZIALFALL: Resource Version zu alt
             if e.status == 410:
-                print(f"[WATCH] Version expired for {namespace}, resetting resource_version")
-                resource_version = None # Reset bewirkt einen neuen List-Sync
-                continue # Sofort neu starten ohne Backoff
-            
-            # Andere API Fehler
-            watch_errors.labels(namespace=namespace, reason="api_error").inc()
+                print(f"[WATCH] 410 Gone in ns={namespace} → resetting resourceVersion")
+
+                try:
+                    initial = await loop.run_in_executor(
+                        None, lambda: v1.list_namespaced_event(namespace=namespace)
+                    )
+                    resource_version = initial.metadata.resource_version
+                    print(f"[WATCH] new LIST rv={resource_version} for ns={namespace}")
+                except Exception as e2:
+                    print(f"[WATCH] LIST retry failed for ns={namespace}: {e2}")
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, 30)
+
+                continue
+
+            print(f"[WATCH] API error in ns={namespace}: {e}")
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30)
 
+        # ============================================================
+        # Cancel
+        # ============================================================
         except asyncio.CancelledError:
             print(f"[WATCH] watcher for ns={namespace} cancelled")
             break
 
+        # ============================================================
+        # Andere Fehler → Backoff
+        # ============================================================
         except Exception as e:
             watch_errors.inc()
             watch_restarts.inc()
-            print(f"[WATCH] error in ns={namespace}: {e}")
-
-            # Exponentielles Backoff
-            print(f"[WATCH] reconnecting in {backoff}s...")
-            try:
-                await asyncio.wait_for(asyncio.sleep(backoff), timeout=backoff)
-            except asyncio.CancelledError:
-                break
-
+            print(f"[WATCH] unexpected error in ns={namespace}: {e}")
+            await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30)
 
     print(f"[WATCH] watcher for ns={namespace} stopped")
