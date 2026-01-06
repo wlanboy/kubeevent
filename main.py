@@ -2,8 +2,7 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from sqlmodel import Session
@@ -123,27 +122,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Routen aus routes.py einbinden
 app.include_router(router)
-
-
-# ============================================================
-# ROOT + FAVICON
-# ============================================================
-
-@app.get("/")
-def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
-
-
-@app.get('/favicon.ico', include_in_schema=False)
-async def favicon():
-    svg = '''
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-        <text y=".9em" font-size="90">☸️</text>
-    </svg>
-    '''
-    return Response(content=svg, media_type="image/svg+xml")

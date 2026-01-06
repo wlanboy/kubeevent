@@ -5,18 +5,31 @@ from fastapi import APIRouter, Request, Depends, Response, Query
 from fastapi.responses import StreamingResponse
 from fastapi.encoders import jsonable_encoder
 from sqlmodel import Session, select, func
+from fastapi.templating import Jinja2Templates
 
 from db import get_session, engine
 from models import K8sEvent
 from runtime import shutdown_event
 
 router = APIRouter()
+templates = Jinja2Templates(directory="templates")
 
+@router.get("/")
+def index(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@router.get('/favicon.ico', include_in_schema=False)
+async def favicon():
+    svg = '''
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text y=".9em" font-size="90">☸️</text>
+    </svg>
+    '''
+    return Response(content=svg, media_type="image/svg+xml")
 
 @router.get("/healthz")
 async def healthz():
     return {"status": "ok"}
-
 
 @router.get("/readyz")
 async def readyz():
@@ -76,7 +89,6 @@ def search_events(
         "pages": (total + page_size - 1) // page_size
     }
 
-
 @router.get("/events/stream")
 async def stream_events(limit: int = 100, session: Session = Depends(get_session)):
     async def event_generator():
@@ -86,10 +98,27 @@ async def stream_events(limit: int = 100, session: Session = Depends(get_session
                 events = list(session.exec(stmt).all())
 
                 json_data = json.dumps(jsonable_encoder(events))
+
+                # SSE event
                 yield f"data: {json_data}\n\n"
+
+                yield ": keep-alive\n\n"
+
                 await asyncio.sleep(2)
+
         except asyncio.CancelledError:
             print("[STREAM] SSE client disconnected or shutdown")
             return
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers=headers
+    )
+
