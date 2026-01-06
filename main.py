@@ -1,6 +1,5 @@
 import asyncio
 import os
-import signal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
@@ -16,19 +15,6 @@ from routes import router
 
 from dotenv import load_dotenv
 import aiocron
-
-
-# ============================================================
-# SIGNAL HANDLING
-# ============================================================
-
-def handle_sigterm(*_):
-    print("[SIGNAL] SIGTERM/SIGINT received → triggering shutdown...")
-    shutdown_event.set()
-
-signal.signal(signal.SIGTERM, handle_sigterm)
-signal.signal(signal.SIGINT, handle_sigterm)
-
 
 # ============================================================
 # RETENTION JOB (Cron)
