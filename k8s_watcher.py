@@ -4,6 +4,7 @@ from typing import List
 
 from kubernetes import client, config, watch
 from sqlmodel import Session, select
+from sqlalchemy import tuple_
 
 from db import engine
 from models import K8sEvent
@@ -74,22 +75,29 @@ def sync_db_save(events: list):
         return
 
     print(f"[DB] Saving batch of {len(events)} events")
+
+    # 1) Alle Keys extrahieren
+    keys = {(ev.metadata.uid, ev.count or 1) for ev in events}
+
     with Session(engine) as session:
+        # 2) Einmalig alle existierenden Events laden
+        stmt = select(K8sEvent.uid, K8sEvent.count).where(
+            tuple_(K8sEvent.uid, K8sEvent.count).in_(keys)
+        )
+        existing_rows = set(session.exec(stmt).all())
+
+        # 3) Neue Events filtern
+        new_events = []
         for ev in events:
             process_metrics(ev)
 
-            uid = ev.metadata.uid
-            current_count = ev.count or 1
+            key = (ev.metadata.uid, ev.count or 1)
+            if key in existing_rows:
+                continue
 
-            stmt = select(K8sEvent).where(
-                K8sEvent.uid == uid,
-                K8sEvent.count == current_count
-            )
-            existing = session.exec(stmt).first()
-
-            if not existing:
-                obj = K8sEvent(
-                    uid=uid,
+            new_events.append(
+                K8sEvent(
+                    uid=ev.metadata.uid,
                     name=ev.metadata.name,
                     namespace=ev.metadata.namespace or "default",
                     reason=ev.reason,
@@ -99,13 +107,16 @@ def sync_db_save(events: list):
                     involved_name=getattr(ev.involved_object, "name", None),
                     first_timestamp=ev.first_timestamp,
                     last_timestamp=ev.last_timestamp,
-                    count=current_count
+                    count=ev.count or 1
                 )
-                session.add(obj)
+            )
+
+        # 4) Bulk insert
+        session.add_all(new_events)
 
         try:
             session.commit()
-            print("[DB] Batch committed")
+            print(f"[DB] Batch committed ({len(new_events)} new events)")
         except Exception as e:
             print(f"[DB] Error during commit: {e}")
             session.rollback()
