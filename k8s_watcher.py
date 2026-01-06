@@ -185,8 +185,16 @@ async def watch_namespace(namespace: str):
                 ))
 
             events = await loop.run_in_executor(None, _stream_once)
-
+            num_events = len(events)
             # Erfolgreich → Backoff resetten
+            print(f"[WATCH] Received {num_events} events from stream for ns={namespace}")
+            
+            if len(events) == 0:
+                # Stream ist tot → reconnect
+                print(f"[WATCH] empty stream for ns={namespace}, reconnecting...")
+                await asyncio.sleep(1)
+                continue
+
             backoff = 1
 
             for event in events:
@@ -200,6 +208,18 @@ async def watch_namespace(namespace: str):
                     event_queue.put_nowait(obj)
                 except asyncio.QueueFull:
                     print("[WATCH] queue full, dropping event")
+
+        except client.exceptions.ApiException as e:
+            # SPEZIALFALL: Resource Version zu alt
+            if e.status == 410:
+                print(f"[WATCH] Version expired for {namespace}, resetting resource_version")
+                resource_version = None # Reset bewirkt einen neuen List-Sync
+                continue # Sofort neu starten ohne Backoff
+            
+            # Andere API Fehler
+            watch_errors.labels(namespace=namespace, reason="api_error").inc()
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 30)
 
         except asyncio.CancelledError:
             print(f"[WATCH] watcher for ns={namespace} cancelled")
@@ -221,7 +241,6 @@ async def watch_namespace(namespace: str):
 
     print(f"[WATCH] watcher for ns={namespace} stopped")
 
-
 # ============================================================
 # HAUPTSCHLEIFE
 # ============================================================
@@ -231,15 +250,31 @@ async def watch_events_loop():
     init_k8s()
     namespaces = get_namespaces()
 
-    worker_task = asyncio.create_task(db_worker())
-    watcher_tasks = [
-        asyncio.create_task(watch_namespace(ns))
-        for ns in namespaces
-    ]
+    while not runtime.stop_watcher:
+        print("[WATCH] starting watcher + db_worker cycle")
 
-    try:
-        await asyncio.gather(worker_task, *watcher_tasks)
-    except asyncio.CancelledError:
-        print("[WATCH] watch_events_loop cancelled")
-    finally:
-        print("[WATCH] watch_events_loop exiting")
+        worker_task = asyncio.create_task(db_worker())
+        watcher_tasks = [
+            asyncio.create_task(watch_namespace(namespace))
+            for namespace in namespaces
+        ]
+
+        try:
+            # return_exceptions=True verhindert, dass eine Exception alles beendet
+            results = await asyncio.gather(worker_task, *watcher_tasks, return_exceptions=True)
+
+            # Logging, falls etwas unerwartet beendet wurde
+            for r in results:
+                if isinstance(r, Exception):
+                    print(f"[WATCH] task ended with exception: {r}")
+
+        except asyncio.CancelledError:
+            print("[WATCH] watch_events_loop cancelled")
+            break
+
+        # Wenn wir hier landen, sind alle Tasks durch – evtl. unerwartet
+        if not runtime.stop_watcher:
+            print("[WATCH] tasks ended unexpectedly, restarting in 2s...")
+            await asyncio.sleep(2)
+
+    print("[WATCH] watch_events_loop exiting")
