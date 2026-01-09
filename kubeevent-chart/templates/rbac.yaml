@@ -6,7 +6,7 @@ metadata:
   name: kubeevents-event-reader
   namespace: {{ . }}
 rules:
-  - apiGroups: [""]
+  - apiGroups: ["", "events.k8s.io"]
     resources: ["events"]
     verbs: ["get", "list", "watch"]
 ---
