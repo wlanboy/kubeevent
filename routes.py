@@ -1,6 +1,7 @@
 # routes.py
 import asyncio
 import json
+import logging
 from fastapi import APIRouter, Request, Depends, Response, Query
 from fastapi.responses import StreamingResponse
 from fastapi.encoders import jsonable_encoder
@@ -10,6 +11,8 @@ from fastapi.templating import Jinja2Templates
 from db import get_session, engine
 from models import K8sEvent
 from runtime import shutdown_event
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -90,25 +93,28 @@ def search_events(
     }
 
 @router.get("/events/stream")
-async def stream_events(limit: int = 100, session: Session = Depends(get_session)):
+async def stream_events(limit: int = Query(100, ge=1, le=500)):
     async def event_generator():
         try:
             while not shutdown_event.is_set():
-                stmt = select(K8sEvent).order_by(K8sEvent.created_at.desc()).limit(limit)
-                events = list(session.exec(stmt).all())
-
-                json_data = json.dumps(jsonable_encoder(events))
+                # Session innerhalb der Loop erstellen um Lifecycle-Probleme zu vermeiden
+                with Session(engine) as session:
+                    stmt = select(K8sEvent).order_by(K8sEvent.created_at.desc()).limit(limit)
+                    events = list(session.exec(stmt).all())
+                    json_data = json.dumps(jsonable_encoder(events))
 
                 # SSE event
                 yield f"data: {json_data}\n\n"
 
+                # keep-alive comment
                 yield ": keep-alive\n\n"
 
                 await asyncio.sleep(2)
 
         except asyncio.CancelledError:
-            print("[STREAM] SSE client disconnected or shutdown")
-            return
+            logger.debug("SSE client disconnected or shutdown")
+        except Exception as e:
+            logger.error(f"SSE stream error: {e}", exc_info=True)
 
     headers = {
         "Cache-Control": "no-cache",
