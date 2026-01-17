@@ -87,3 +87,16 @@ kubectl delete deployment demoapp -n kubeevent
 ![Deployment Dashboard](screenshots/deployment-dashboard.png)
 ![Pod Dashboard](screenshots/pod-dashboard.png)
 
+## Docker build
+```bash 
+docker build -t kubeevent .
+
+docker run --rm \
+  --name kubeevent \
+  -p 5000:5000 \
+  -v $(pwd)/data:/app/data \
+  -v $HOME/.kube/config:/home/appuser/.kube/config:ro \
+  -e POD_NAMESPACE=kubeevent,randomfail \
+  -e DB_PATH=/app/data/events.db \
+  kubeevent
+```
