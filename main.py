@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -6,31 +7,35 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from sqlmodel import Session
+from sqlalchemy import text
 from db import init_db, engine
 from k8s_watcher import watch_events_loop
 from runtime import shutdown_event
-import runtime  # für stop_watcher
 from routes import router
 
 from dotenv import load_dotenv
 import aiocron
 
+logger = logging.getLogger(__name__)
+
 # ============================================================
 # RETENTION JOB (Cron)
 # ============================================================
 
-async def retention_job():
-    print("[CRON] Running retention job...")
+async def retention_job() -> None:
+    """Löscht Events älter als 7 Tage."""
+    logger.info("Running retention job...")
     with Session(engine) as session:
         from sqlalchemy import text
         stmt = text("DELETE FROM k8sevent WHERE created_at < datetime('now', '-7 days')")
-        session.execute(stmt)
+        result = session.exec(stmt)
         session.commit()
-    print("[CRON] Retention job complete")
+        logger.info(f"Retention job complete, deleted {result.rowcount} rows")
 
 
-async def retention_worker():
-    print("[TASK] retention_worker started")
+async def retention_worker() -> None:
+    """Führt stündlich den Retention-Job aus."""
+    logger.info("retention_worker started")
 
     cron = aiocron.crontab("0 * * * *", func=retention_job)
 
@@ -38,7 +43,7 @@ async def retention_worker():
         await shutdown_event.wait()
     finally:
         cron.stop()
-        print("[TASK] retention_worker stopped")
+        logger.info("retention_worker stopped")
 
 
 # ============================================================
@@ -47,22 +52,24 @@ async def retention_worker():
 
 taskgroup_task: asyncio.Task | None = None
 
-async def run_taskgroup():
-    print("[TASKGROUP] Starting TaskGroup...")
+
+async def run_taskgroup() -> None:
+    """Startet alle Hintergrund-Tasks in einer TaskGroup."""
+    logger.info("Starting TaskGroup...")
 
     async with asyncio.TaskGroup() as tg:
-        tg.create_task(watch_events_loop())
-        print("[TASKGROUP] watcher_task started")
+        tg.create_task(watch_events_loop(), name="watch_events_loop")
+        logger.info("watcher_task started")
 
-        tg.create_task(retention_worker())
-        print("[TASKGROUP] retention_worker started")
+        tg.create_task(retention_worker(), name="retention_worker")
+        logger.info("retention_worker started")
 
-        print("[TASKGROUP] Waiting for shutdown_event...")
+        logger.debug("Waiting for shutdown_event...")
         await shutdown_event.wait()
 
-        print("[TASKGROUP] shutdown_event triggered → TaskGroup will cancel tasks")
+        logger.info("shutdown_event triggered → TaskGroup will cancel tasks")
 
-    print("[TASKGROUP] TaskGroup exited cleanly")
+    logger.info("TaskGroup exited cleanly")
 
 
 # ============================================================
@@ -71,49 +78,48 @@ async def run_taskgroup():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("[LIFESPAN] Startup initiated")
+    logger.info("Startup initiated")
 
     # Ensure DB directory exists
-    DB_PATH = os.getenv("DB_PATH", "data/events.db")
-    db_dir = os.path.dirname(DB_PATH)
+    db_path = os.getenv("DB_PATH", "data/events.db")
+    db_dir = os.path.dirname(db_path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
-        print(f"[LIFESPAN] Ensured DB directory exists: {db_dir}")
+        logger.debug(f"Ensured DB directory exists: {db_dir}")
 
     load_dotenv(override=False)
     init_db()
-    print("[LIFESPAN] Database initialized")
+    logger.info("Database initialized")
 
     # Start TaskGroup in background
     global taskgroup_task
-    taskgroup_task = asyncio.create_task(run_taskgroup())
-    print("[LIFESPAN] TaskGroup started in background")
+    taskgroup_task = asyncio.create_task(run_taskgroup(), name="taskgroup")
+    logger.info("TaskGroup started in background")
 
-    print("[LIFESPAN] Startup complete")
+    logger.info("Startup complete")
     yield  # REST API becomes available here
 
     # ============================================================
     # SHUTDOWN
     # ============================================================
 
-    print("[LIFESPAN] Shutdown initiated")
+    logger.info("Shutdown initiated")
 
-    # global stop_watcher setzen
-    runtime.stop_watcher = True
     shutdown_event.set()
 
-    print("[LIFESPAN] Waiting for TaskGroup to finish...")
+    logger.info("Waiting for TaskGroup to finish...")
 
-    # FIX: TaskGroup nur awaiten, wenn sie noch läuft
+    # TaskGroup nur awaiten, wenn sie noch läuft
     if taskgroup_task and not taskgroup_task.done():
         try:
             await asyncio.wait_for(taskgroup_task, timeout=5)
         except asyncio.TimeoutError:
-            print("[LIFESPAN] TaskGroup timeout — forcing shutdown")
+            logger.warning("TaskGroup timeout — forcing shutdown")
+            taskgroup_task.cancel()
     else:
-        print("[LIFESPAN] TaskGroup already finished")
+        logger.debug("TaskGroup already finished")
 
-    print("[LIFESPAN] Shutdown complete")
+    logger.info("Shutdown complete")
 
 
 # ============================================================
