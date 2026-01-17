@@ -44,7 +44,7 @@ certManager:
 
 serviceAccount:
   create: true
-  name: kubeevents
+  name: kubeeventspy
 
 watchNamespaces:
   - kubeevent
