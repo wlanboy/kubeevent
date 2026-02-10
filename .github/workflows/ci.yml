@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      # https://github.com/marketplace/actions/checkout
+      - uses: actions/checkout@v6
+      # https://github.com/marketplace/actions/astral-sh-setup-uv
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Check syntax
+        run: |
+          uv run python -m py_compile main.py
+          uv run python -m py_compile routes.py
+          uv run python -m py_compile models.py
+          uv run python -m py_compile db.py
+          uv run python -m py_compile metrics.py
+          uv run python -m py_compile runtime.py
+          uv run python -m py_compile k8s_watcher.py
+
+      - name: Verify FastAPI app imports
+        run: |
+          uv run python -c "from main import app; print('FastAPI app OK')"
