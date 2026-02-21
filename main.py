@@ -7,7 +7,6 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from sqlmodel import Session
-from sqlalchemy import text
 from db import init_db, engine
 from k8s_watcher import watch_events_loop
 from runtime import shutdown_event
