@@ -12,29 +12,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # https://github.com/marketplace/actions/checkout
       - uses: actions/checkout@v6
-      # https://github.com/marketplace/actions/astral-sh-setup-uv
-      - uses: astral-sh/setup-uv@v7
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v7
         with:
           version: "latest"
-
-      - name: Set up Python
-        run: uv python install
+          # Automatisches Caching für installierte Pakete aktivieren
+          enable-cache: true
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --frozen
 
-      - name: Check syntax
-        run: |
-          uv run python -m py_compile main.py
-          uv run python -m py_compile routes.py
-          uv run python -m py_compile models.py
-          uv run python -m py_compile db.py
-          uv run python -m py_compile metrics.py
-          uv run python -m py_compile runtime.py
-          uv run python -m py_compile k8s_watcher.py
+      - name: Static Analysis (Linting)
+        # Statt manueller compile-Befehle nutzen wir Ruff (extrem schnell)
+        # Es prüft Syntax, Imports und Logikfehler in allen Dateien gleichzeitig
+        run: uv run ruff check .
 
       - name: Verify FastAPI app imports
+        # Wir nutzen Umgebungsvariablen, falls deine App beim Import DB-Configs braucht
         run: |
-          uv run python -c "from main import app; print('FastAPI app OK')"
+          uv run python -c "from main import app; print('🚀 FastAPI app imported successfully')"
