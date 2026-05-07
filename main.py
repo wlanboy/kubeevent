@@ -23,13 +23,13 @@ logger = logging.getLogger(__name__)
 
 async def retention_job() -> None:
     """Löscht Events älter als 7 Tage."""
-    logger.info("Running retention job...")
+    logger.info("[CRON] Running retention job...")
     with Session(engine) as session:
         from sqlalchemy import text
         stmt = text("DELETE FROM k8sevent WHERE created_at < datetime('now', '-7 days')")
-        result = session.exec(stmt)
+        result = session.execute(stmt)
         session.commit()
-        logger.info(f"Retention job complete, deleted {result.rowcount} rows")
+        logger.info(f"[CRON] Retention job complete. Deleted {result.rowcount} events.")  # type: ignore[union-attr]
 
 
 async def retention_worker() -> None:
