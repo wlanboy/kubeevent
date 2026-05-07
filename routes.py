@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Request, Depends, Response, Query
 from fastapi.responses import StreamingResponse
 from fastapi.encoders import jsonable_encoder
-from sqlmodel import Session, select, func
+from sqlmodel import Session, select, func, col
 from fastapi.templating import Jinja2Templates
 
 from db import get_session, engine
@@ -19,7 +19,7 @@ templates = Jinja2Templates(directory="templates")
 
 @router.get("/")
 def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 @router.get('/favicon.ico', include_in_schema=False)
 async def favicon():
@@ -53,7 +53,7 @@ def metrics():
 
 @router.get("/events/latest")
 def latest_events(session: Session = Depends(get_session)):
-    stmt = select(K8sEvent).order_by(K8sEvent.created_at.desc()).limit(100)
+    stmt = select(K8sEvent).order_by(col(K8sEvent.created_at).desc()).limit(100)
     return list(session.exec(stmt).all())
 
 
@@ -69,19 +69,21 @@ def search_events(
     if q:
         like = f"%{q}%"
         stmt = stmt.where(
-            (K8sEvent.message.ilike(like)) |
-            (K8sEvent.name.ilike(like)) |
-            (K8sEvent.involved_name.ilike(like)) |
-            (K8sEvent.involved_kind.ilike(like)) |
-            (K8sEvent.namespace.ilike(like)) |
-            (K8sEvent.reason.ilike(like)) |
-            (K8sEvent.type.ilike(like))
+            col(K8sEvent.message).ilike(like) |
+            col(K8sEvent.name).ilike(like) |
+            col(K8sEvent.involved_name).ilike(like) |
+            col(K8sEvent.involved_kind).ilike(like) |
+            col(K8sEvent.namespace).ilike(like) |
+            col(K8sEvent.reason).ilike(like) |
+            col(K8sEvent.type).ilike(like) |
+            col(K8sEvent.component).ilike(like) |
+            col(K8sEvent.host).ilike(like)
         )
 
     total = session.exec(select(func.count()).select_from(stmt.subquery())).one()
 
     offset = (page - 1) * page_size
-    stmt = stmt.order_by(K8sEvent.created_at.desc()).offset(offset).limit(page_size)
+    stmt = stmt.order_by(col(K8sEvent.created_at).desc()).offset(offset).limit(page_size)
     items = list(session.exec(stmt).all())
 
     return {
@@ -99,7 +101,7 @@ async def stream_events(limit: int = Query(100, ge=1, le=500)):
             while not shutdown_event.is_set():
                 # Session innerhalb der Loop erstellen um Lifecycle-Probleme zu vermeiden
                 with Session(engine) as session:
-                    stmt = select(K8sEvent).order_by(K8sEvent.created_at.desc()).limit(limit)
+                    stmt = select(K8sEvent).order_by(col(K8sEvent.created_at).desc()).limit(limit)
                     events = list(session.exec(stmt).all())
                     json_data = json.dumps(jsonable_encoder(events))
 
