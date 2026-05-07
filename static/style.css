@@ -1,0 +1,31 @@
+main.container-fluid {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: var(--pico-spacing);
+}
+
+.table-container {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.tab.active {
+    font-weight: bold;
+}
+
+nav ul#streamPagination,
+nav ul#searchPagination {
+    justify-content: center;
+}

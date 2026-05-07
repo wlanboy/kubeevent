@@ -161,7 +161,7 @@ async function updateStats() {
                 const simpleMatch = line.match(/^(kubeevents_total|kubeevents_watch_restarts_total|kubeevents_watch_errors_total)\s+(\d+)/);
                 if (simpleMatch) {
                     const val = parseInt(simpleMatch[2]);
-                    if (simpleMatch[1].includes('total')) stats.total = val;
+                    if (simpleMatch[1] === 'kubeevents_total') stats.total = val;
                     if (simpleMatch[1].includes('restarts')) stats.restarts = val;
                     if (simpleMatch[1].includes('errors')) stats.errors = val;
                 }
