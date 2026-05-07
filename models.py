@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlmodel import SQLModel, Field, Index
-from sqlalchemy import Column, DateTime, text
+from sqlalchemy import Column, DateTime, text, UniqueConstraint
 
 
 class K8sEvent(SQLModel, table=True):
@@ -51,9 +51,11 @@ class K8sEvent(SQLModel, table=True):
     count: Optional[int] = Field(default=1, index=True)
 
     # Zeitpunkt der Erfassung in unserer DB
-    created_at: datetime = Field(
+    created_at: Optional[datetime] = Field(
+        default=None,
         sa_column=Column(
             DateTime(timezone=True),
+            nullable=False,
             index=True,
             server_default=text('CURRENT_TIMESTAMP')
         )
@@ -62,4 +64,5 @@ class K8sEvent(SQLModel, table=True):
     # Composite Index für performante Dubletten-Prüfung
     __table_args__ = (
         Index("ix_k8sevent_uid_count", "uid", "count"),
+        UniqueConstraint("uid", "count", name="uc_uid_count"),
     )
