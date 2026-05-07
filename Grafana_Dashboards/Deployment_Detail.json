@@ -60,8 +60,8 @@
       "gridPos": { "x": 0, "y": 6, "w": 24, "h": 6 },
       "targets": [
         {
-          "expr": "rate(kubeevents_involved_total{namespace=\"$namespace\", kind=\"ReplicaSet\", reason=\"SuccessfulCreate\"}[5m])",
-          "legendFormat": "ReplicaSet SuccessfulCreate"
+          "expr": "rate(kubeevents_involved_total{namespace=\"$namespace\", kind=\"ReplicaSet\", involved_name=~\"$deployment-.*\", reason=\"SuccessfulCreate\"}[5m])",
+          "legendFormat": "{{involved_name}} SuccessfulCreate"
         },
         {
           "expr": "rate(kubeevents_involved_total{namespace=\"$namespace\", kind=\"Deployment\", involved_name=\"$deployment\", reason=\"ScalingReplicaSet\"}[5m])",

@@ -85,6 +85,62 @@
           "legendFormat": "{{namespace}} / {{deployment}} / Warning"
         }
       ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events per StatefulSet (5m Increase)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 28, "w": 24, "h": 7 },
+      "targets": [
+        {
+          "expr": "increase(kubeevents_statefulset_total{namespace=~\"$namespace\", type=~\"$type\"}[5m])",
+          "legendFormat": "{{namespace}} / {{statefulset}} / {{type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "StatefulSet Normal vs Warning (5m Increase)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 35, "w": 24, "h": 7 },
+      "targets": [
+        {
+          "expr": "increase(kubeevents_statefulset_total{namespace=~\"$namespace\", type=\"Normal\"}[5m])",
+          "legendFormat": "{{namespace}} / {{statefulset}} / Normal"
+        },
+        {
+          "expr": "increase(kubeevents_statefulset_total{namespace=~\"$namespace\", type=\"Warning\"}[5m])",
+          "legendFormat": "{{namespace}} / {{statefulset}} / Warning"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events per DaemonSet (5m Increase)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 42, "w": 24, "h": 7 },
+      "targets": [
+        {
+          "expr": "increase(kubeevents_daemonset_total{namespace=~\"$namespace\", type=~\"$type\"}[5m])",
+          "legendFormat": "{{namespace}} / {{daemonset}} / {{type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DaemonSet Normal vs Warning (5m Increase)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 49, "w": 24, "h": 7 },
+      "targets": [
+        {
+          "expr": "increase(kubeevents_daemonset_total{namespace=~\"$namespace\", type=\"Normal\"}[5m])",
+          "legendFormat": "{{namespace}} / {{daemonset}} / Normal"
+        },
+        {
+          "expr": "increase(kubeevents_daemonset_total{namespace=~\"$namespace\", type=\"Warning\"}[5m])",
+          "legendFormat": "{{namespace}} / {{daemonset}} / Warning"
+        }
+      ]
     }
   ]
 }

@@ -1,0 +1,105 @@
+{
+  "title": "DaemonSet Detail",
+  "uid": "kube-daemonset-detail",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Datasource"
+      },
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": "$datasource",
+        "label": "Namespace",
+        "query": "label_values(kubeevents_daemonset_total, namespace)"
+      },
+      {
+        "name": "daemonset",
+        "type": "query",
+        "datasource": "$datasource",
+        "label": "DaemonSet",
+        "query": "label_values(kubeevents_daemonset_total{namespace=\"$namespace\"}, daemonset)"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Events for DaemonSet",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 3 },
+      "targets": [
+        {
+          "expr": "sum(kubeevents_daemonset_total{namespace=\"$namespace\", daemonset=\"$daemonset\"})"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Warning Events",
+      "datasource": "$datasource",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 3 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(kubeevents_daemonset_total{namespace=\"$namespace\", daemonset=\"$daemonset\", type=\"Warning\"})"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events per Second",
+      "datasource": "$datasource",
+      "gridPos": { "x": 8, "y": 0, "w": 16, "h": 6 },
+      "targets": [
+        {
+          "expr": "rate(kubeevents_daemonset_total{namespace=\"$namespace\", daemonset=\"$daemonset\"}[5m])",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events by Reason",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 6, "w": 24, "h": 6 },
+      "targets": [
+        {
+          "expr": "rate(kubeevents_involved_total{namespace=\"$namespace\", kind=\"DaemonSet\", involved_name=\"$daemonset\"}[5m])",
+          "legendFormat": "{{reason}} / {{type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events by Component",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 6 },
+      "targets": [
+        {
+          "expr": "rate(kubeevents_involved_total{namespace=\"$namespace\", kind=\"DaemonSet\", involved_name=\"$daemonset\"}[5m])",
+          "legendFormat": "{{component}} / {{reason}}"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "title": "Node Events",
+  "uid": "kube-node-events",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Datasource"
+      },
+      {
+        "name": "node",
+        "type": "query",
+        "datasource": "$datasource",
+        "label": "Node",
+        "query": "label_values(kubeevents_node_events_total, node)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Node Events",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 3 },
+      "targets": [
+        {
+          "expr": "sum(kubeevents_node_events_total{node=~\"$node\"})"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Warning Events",
+      "datasource": "$datasource",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 3 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(kubeevents_node_events_total{node=~\"$node\", type=\"Warning\"})"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events per Second per Node",
+      "datasource": "$datasource",
+      "gridPos": { "x": 8, "y": 0, "w": 16, "h": 6 },
+      "targets": [
+        {
+          "expr": "rate(kubeevents_node_events_total{node=~\"$node\"}[5m])",
+          "legendFormat": "{{node}} / {{type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events by Reason per Node",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 6, "w": 24, "h": 7 },
+      "targets": [
+        {
+          "expr": "rate(kubeevents_node_events_total{node=~\"$node\"}[5m])",
+          "legendFormat": "{{node}} / {{reason}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Warning Events per Node (Spike Detection)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 7 },
+      "targets": [
+        {
+          "expr": "rate(kubeevents_node_events_total{node=~\"$node\", type=\"Warning\"}[5m])",
+          "legendFormat": "{{node}} / {{reason}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Warning Spike Detection",
+      "datasource": "$datasource",
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 7 },
+      "targets": [
+        {
+          "expr": "idelta(kubeevents_node_events_total{node=~\"$node\", type=\"Warning\"}[5m])",
+          "legendFormat": "{{node}} / {{reason}}"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Top Reasons (5m Increase)",
+      "datasource": "$datasource",
+      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 7 },
+      "targets": [
+        {
+          "expr": "sort_desc(sum by (node, reason, type) (increase(kubeevents_node_events_total{node=~\"$node\"}[5m])))",
+          "legendFormat": "{{node}} / {{reason}} / {{type}}",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        { "id": "labelsToFields", "options": {} },
+        { "id": "organize", "options": { "renameByName": { "node": "Node", "reason": "Reason", "type": "Type", "Value": "Events (5m)" } } }
+      ]
+    }
+  ]
+}
