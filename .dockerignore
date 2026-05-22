@@ -1,0 +1,12 @@
+.git
+.gitignore
+.github
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.uv/
+*.md
+*.log
+.idea/
+.DS_Store
