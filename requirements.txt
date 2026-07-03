@@ -87,12 +87,10 @@ starlette==0.50.0
     # via fastapi
 typing-extensions==4.15.0
     # via
-    #   anyio
     #   fastapi
     #   pydantic
     #   pydantic-core
     #   sqlalchemy
-    #   starlette
     #   typing-inspection
 typing-inspection==0.4.2
     # via pydantic
