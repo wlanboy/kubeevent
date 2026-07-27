@@ -3,17 +3,16 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+import aiocron
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-
 from sqlmodel import Session
-from db import init_db, engine
-from k8s_watcher import watch_events_loop
-from runtime import shutdown_event
-from routes import router
 
-from dotenv import load_dotenv
-import aiocron
+from db import engine, init_db
+from k8s_watcher import watch_events_loop
+from routes import router
+from runtime import shutdown_event
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +111,7 @@ async def lifespan(app: FastAPI):
     if taskgroup_task and not taskgroup_task.done():
         try:
             await asyncio.wait_for(taskgroup_task, timeout=5)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("TaskGroup timeout — forcing shutdown")
             taskgroup_task.cancel()
     else:

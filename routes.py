@@ -2,13 +2,14 @@
 import asyncio
 import json
 import logging
-from fastapi import APIRouter, Request, Depends, Response, Query
-from fastapi.responses import StreamingResponse
-from fastapi.encoders import jsonable_encoder
-from sqlmodel import Session, select, func, col
-from fastapi.templating import Jinja2Templates
 
-from db import get_session, engine
+from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import StreamingResponse
+from fastapi.templating import Jinja2Templates
+from sqlmodel import Session, col, func, select
+
+from db import engine, get_session
 from models import K8sEvent
 from runtime import shutdown_event
 
@@ -39,14 +40,14 @@ async def readyz():
     try:
         with Session(engine) as session:
             session.exec(select(1))
-    except Exception:
+    except Exception:  # noqa: BLE001 - readiness probe must not crash on any db failure
         return {"status": "error", "details": "db not ready"}
     return {"status": "ready"}
 
 
 @router.get("/metrics")
 def metrics():
-    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
     data = generate_latest()
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
@@ -115,8 +116,8 @@ async def stream_events(limit: int = Query(100, ge=1, le=500)):
 
         except asyncio.CancelledError:
             logger.debug("SSE client disconnected or shutdown")
-        except Exception as e:
-            logger.error(f"SSE stream error: {e}", exc_info=True)
+        except Exception:
+            logger.exception("SSE stream error")
 
     headers = {
         "Cache-Control": "no-cache",

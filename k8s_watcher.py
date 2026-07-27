@@ -1,24 +1,35 @@
-import os
 import asyncio
 import logging
-from typing import Any, List, Set, Tuple
+import os
+from typing import Any
 
 from kubernetes import client, config, watch
 from kubernetes.client.exceptions import ApiException
-from sqlmodel import Session, select, col
 from sqlalchemy import tuple_
+from sqlmodel import Session, col, select
 
-from db import engine
-from models import K8sEvent
-from metrics import (
-    events_total, events_by_type, events_by_namespace,
-    events_by_namespace_type, watch_errors, watch_restarts,
-    events_by_involved, events_by_pod, events_by_deployment,
-    events_by_component, events_by_node,
-    events_by_reason, events_by_replicaset, events_by_statefulset,
-    events_by_daemonset, events_by_pvc, events_by_node_events
-)
 import runtime
+from db import engine
+from metrics import (
+    events_by_component,
+    events_by_daemonset,
+    events_by_deployment,
+    events_by_involved,
+    events_by_namespace,
+    events_by_namespace_type,
+    events_by_node,
+    events_by_node_events,
+    events_by_pod,
+    events_by_pvc,
+    events_by_reason,
+    events_by_replicaset,
+    events_by_statefulset,
+    events_by_type,
+    events_total,
+    watch_errors,
+    watch_restarts,
+)
+from models import K8sEvent
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +48,7 @@ def safe_count(event) -> int:
     return 1
 
 
-def get_namespaces() -> List[str]:
+def get_namespaces() -> list[str]:
     raw = os.getenv("POD_NAMESPACE", "demo")
     namespaces = [ns.strip() for ns in raw.split(",") if ns.strip()]
     logger.info(f"[CONFIG] Configured namespaces to watch: {namespaces}")
@@ -136,17 +147,17 @@ def sync_db_save(events: list) -> None:
     logger.debug(f"Saving batch of {len(events)} events")
 
     # 1) Alle Keys extrahieren
-    keys: Set[Tuple[str, int]] = {(ev.metadata.uid, safe_count(ev)) for ev in events}
+    keys: set[tuple[str, int]] = {(ev.metadata.uid, safe_count(ev)) for ev in events}
 
     with Session(engine) as session:
         # 2) Einmalig alle existierenden Events laden
         stmt = select(K8sEvent.uid, K8sEvent.count).where(
             tuple_(col(K8sEvent.uid), col(K8sEvent.count)).in_(keys)
         )
-        existing_rows: Set[Tuple[str, int | None]] = set(session.exec(stmt).all())
+        existing_rows: set[tuple[str, int | None]] = set(session.exec(stmt).all())
 
         # 3) Neue Events filtern und Metriken verarbeiten
-        new_events: List[K8sEvent] = []
+        new_events: list[K8sEvent] = []
         for ev in events:
             kind = getattr(ev.involved_object, "kind", None) or "unknown"
             involved_name = getattr(ev.involved_object, "name", None) or "unknown"
@@ -190,8 +201,8 @@ def sync_db_save(events: list) -> None:
         try:
             session.commit()
             logger.info(f"Batch committed ({len(new_events)} new events)")
-        except Exception as e:
-            logger.error(f"Error during commit: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Error during commit")
             session.rollback()
 
 
@@ -213,7 +224,7 @@ async def db_worker() -> None:
             # Warte auf erstes Event
             try:
                 ev = await asyncio.wait_for(event_queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
 
             batch = [ev]
@@ -229,7 +240,7 @@ async def db_worker() -> None:
                 try:
                     ev = await asyncio.wait_for(event_queue.get(), timeout=remaining)
                     batch.append(ev)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     break
 
             await loop.run_in_executor(None, sync_db_save, batch)
@@ -240,8 +251,8 @@ async def db_worker() -> None:
         except asyncio.CancelledError:
             logger.info("DB worker cancelled")
             break
-        except Exception as e:
-            logger.error(f"DB worker error: {e}", exc_info=True)
+        except Exception:
+            logger.exception("DB worker error")
 
     logger.info("DB worker stopped")
 
@@ -288,7 +299,7 @@ async def watch_namespace(namespace: str) -> None:
                 event_queue.put_nowait(obj)
             except asyncio.QueueFull:
                 logger.warning(f"[WATCH] Queue full, dropping existing event in ns={namespace}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - watcher must survive any list failure
         logger.warning(f"[WATCH] Failed to list events for '{namespace}': {e}")
 
     # ============================================================
@@ -343,8 +354,8 @@ async def watch_namespace(namespace: str) -> None:
                     initial = await loop.run_in_executor(None, _list_events, v1, namespace)
                     resource_version = initial.metadata.resource_version
                     logger.info(f"[WATCH] New LIST rv={resource_version} for ns={namespace}")
-                except Exception as e2:
-                    logger.error(f"[WATCH] LIST retry failed for ns={namespace}: {e2}")
+                except Exception:
+                    logger.exception(f"[WATCH] LIST retry failed for ns={namespace}")
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, 30)
 
@@ -365,10 +376,10 @@ async def watch_namespace(namespace: str) -> None:
         # ============================================================
         # Andere Fehler → Backoff
         # ============================================================
-        except Exception as e:
+        except Exception:
             watch_errors.inc()
             watch_restarts.inc()
-            logger.error(f"[WATCH] Unexpected error in ns={namespace}: {e}", exc_info=True)
+            logger.exception(f"[WATCH] Unexpected error in ns={namespace}")
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30)
 

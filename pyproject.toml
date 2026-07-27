@@ -23,3 +23,6 @@ dev = [
     "pyright>=1.1.409",
     "ruff>=0.15.2",
 ]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]

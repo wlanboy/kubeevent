@@ -1,5 +1,6 @@
-from sqlmodel import SQLModel, create_engine, Session
 import os
+
+from sqlmodel import Session, SQLModel, create_engine
 
 DB_PATH = os.getenv("DB_PATH", "data/events.db")
 
