@@ -292,7 +292,7 @@ async def watch_namespace(namespace: str) -> None:
     # ============================================================
     try:
         initial = await loop.run_in_executor(None, _list_events, v1, namespace)
-        resource_version = initial.metadata.resource_version
+        resource_version = initial.metadata.resource_version if initial.metadata else None
         logger.info(f"[WATCH] Importing {len(initial.items)} existing events for ns={namespace}")
         for obj in initial.items:
             try:
@@ -352,7 +352,7 @@ async def watch_namespace(namespace: str) -> None:
 
                 try:
                     initial = await loop.run_in_executor(None, _list_events, v1, namespace)
-                    resource_version = initial.metadata.resource_version
+                    resource_version = initial.metadata.resource_version if initial.metadata else None
                     logger.info(f"[WATCH] New LIST rv={resource_version} for ns={namespace}")
                 except Exception:
                     logger.exception(f"[WATCH] LIST retry failed for ns={namespace}")
