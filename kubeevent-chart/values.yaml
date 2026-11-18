@@ -101,6 +101,18 @@ certManager:
     kind: ClusterIssuer
     name: "local-ca-issuer"
 
+# HTTP Basic Auth für UI und API (BASIC_AUTH_USER, BASIC_AUTH_PASSWORD_HASH).
+# /healthz, /readyz und /metrics bleiben offen, Probes und Prometheus brauchen keine Zugangsdaten.
+basicAuth:
+  enabled: false
+  username: admin
+  # bcrypt-Hash, erzeugt mit "uv run python -m kubeevents.auth" oder "htpasswd -nbBC 12 admin <passwort>"
+  # (Teil nach "admin:"). Besser per --set-string oder eigener Values-Datei setzen, nicht einchecken.
+  passwordHash: ""
+  # Vorhandenes Secret mit den Schlüsseln BASIC_AUTH_USER und BASIC_AUTH_PASSWORD_HASH.
+  # Ist es gesetzt, legt das Chart kein eigenes Secret an und ignoriert username und passwordHash.
+  existingSecret: ""
+
 serviceAccount:
   create: true
   name: kubeeventspy

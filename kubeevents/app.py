@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from kubeevents import api, health
+from kubeevents.auth import BasicAuthMiddleware
 from kubeevents.config import Settings, get_settings
 from kubeevents.db import init_db
 from kubeevents.retention import retention_worker
@@ -120,6 +121,11 @@ def create_app(settings: Settings | None = None, *, background: bool = True) -> 
         logger.info("Shutdown complete")
 
     app = FastAPI(title="kubeevents", lifespan=lifespan)
+    if settings.basic_auth_enabled:
+        app.add_middleware(
+            BasicAuthMiddleware, username=settings.basic_auth_user, password_hash=settings.basic_auth_password_hash
+        )
+        logger.info("Basic auth enabled for user %s", settings.basic_auth_user)
     app.mount("/static", StaticFiles(directory=api.BASE_DIR / "static"), name="static")
     app.include_router(health.router)
     app.include_router(api.router)

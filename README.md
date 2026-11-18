@@ -76,7 +76,14 @@ the code is in `kubeevents/config.py`.
 | `BATCH_MAX_DELAY` | `0.2` | Maximum time in seconds the DB worker collects a batch |
 | `WATCH_TIMEOUT_SECONDS` | `300` | The API server ends a watch after this time, the watcher reconnects |
 | `LOG_LEVEL` | `INFO` | Log level |
+| `BASIC_AUTH_USER` | | User for HTTP Basic Auth. Auth is active when user and hash are set |
+| `BASIC_AUTH_PASSWORD_HASH` | | bcrypt hash of the password. `/healthz`, `/readyz` and `/metrics` stay open |
 | `HOST`, `PORT`, `RELOAD` | `0.0.0.0`, `8001`, `false` | Only used when starting with `uv run main.py` |
+
+## basic auth
+Create the hash with `uv run python -m kubeevents.auth` (asks for the password) or with
+`htpasswd -nbBC 12 admin <password>` and take the part after `admin:`. The app checks bcrypt only on the first
+request with valid credentials and remembers the result in memory.
 
 ## access ui and metrics
 - http://localhost:8001

@@ -27,6 +27,9 @@ spec:
         sidecar.istio.io/inject: "true"
       annotations:
         checksum/env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
+        {{- if and .Values.basicAuth.enabled (not .Values.basicAuth.existingSecret) }}
+        checksum/basic-auth: {{ include (print $.Template.BasePath "/secret-basic-auth.yaml") . | sha256sum }}
+        {{- end }}
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
       # preStop + Shutdown der App + Puffer
@@ -45,6 +48,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ .Values.deploymentName }}-env
+            {{- if .Values.basicAuth.enabled }}
+            - secretRef:
+                name: {{ .Values.basicAuth.existingSecret | default (printf "%s-basic-auth" .Values.deploymentName) }}
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

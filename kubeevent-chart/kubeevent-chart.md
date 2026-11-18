@@ -6,7 +6,7 @@ Helm-Chart zum Deployment von kubeevent in einem Kubernetes-Cluster. Das Chart e
 Chart-Metadaten (Name `kubeevent`, Typ `application`, Version). Beschreibt das Chart als "Kube Event Listener deployment with Istio Gateway and cert-manager".
 
 ## values.yaml
-Zentrale Konfigurationsdatei des Charts. Steuert u. a. Image/Tag, Replica-Anzahl, Service (Name/Port), Persistenz der Datenbank (`persistence`), Ressourcen (`resources`), Shutdown-Zeiten (`shutdown`), Probes (`probes`), Security-Context (`podSecurityContext`, `securityContext`), Istio (Hosts, Gateway-Selector, TLS), cert-manager-Issuer, ServiceAccount, RBAC (`rbac.create`) die zu überwachenden Namespaces (`watchNamespaces`) und die Einstellungen der App (`config`: Retention, Metrik-Aufräumen, Queue, Batches, Watch-Timeout, Log-Level). `istio.hosts` gilt für Gateway, VirtualService und Zertifikat.
+Zentrale Konfigurationsdatei des Charts. Steuert u. a. Image/Tag, Replica-Anzahl, Service (Name/Port), Persistenz der Datenbank (`persistence`), Ressourcen (`resources`), Shutdown-Zeiten (`shutdown`), Probes (`probes`), Security-Context (`podSecurityContext`, `securityContext`), Istio (Hosts, Gateway-Selector, TLS), cert-manager-Issuer, ServiceAccount, RBAC (`rbac.create`) die zu überwachenden Namespaces (`watchNamespaces`) und Basic Auth (`basicAuth`) und die Einstellungen der App (`config`: Retention, Metrik-Aufräumen, Queue, Batches, Watch-Timeout, Log-Level). `istio.hosts` gilt für Gateway, VirtualService und Zertifikat.
 
 ## templates/deployment.yaml
 Deployment der kubeevent-Anwendung. Startet den Container als UID 1000 mit read-only Root-Dateisystem. Das PVC hängt unter `/app/data`, `/tmp` ist ein `emptyDir`. Die Environment-Variablen kommen per `envFrom` aus der ConfigMap. Mit PVC nutzt das Deployment `strategy: Recreate`, damit nie zwei Pods dieselbe SQLite-Datei öffnen. Mehr als eine Replica auf einem ReadWriteOnce-PVC lehnt das Template ab.
@@ -21,6 +21,17 @@ PersistentVolumeClaim für die SQLite-Datenbank unter `persistence.mountPath`, a
 
 ## templates/configmap-env.yaml
 ConfigMap mit `DB_PATH` (aus `persistence.mountPath`), `WATCH_NAMESPACES` (aus `watchNamespaces`) und den Werten aus `config`. Eine Änderung startet den Pod über die Checksum-Annotation neu.
+
+## templates/secret-basic-auth.yaml
+Secret `<deploymentName>-basic-auth` mit `BASIC_AUTH_USER` und `BASIC_AUTH_PASSWORD_HASH`, nur mit `basicAuth.enabled` und ohne `basicAuth.existingSecret`. Das Template bricht ab, wenn `basicAuth.passwordHash` kein bcrypt-Hash ist. Das Deployment bindet das Secret per `envFrom` ein, ein geänderter Hash startet den Pod über eine Checksum-Annotation neu. Bei `existingSecret` gibt es keine Checksum, dann den Pod nach einer Änderung selbst neu starten.
+
+Den Hash nicht in `values.yaml` einchecken, sondern beim Install übergeben:
+
+```bash
+helm upgrade --install kubeevent . -n kubeevent \
+  --set basicAuth.enabled=true \
+  --set-string basicAuth.passwordHash='$2b$12$...'
+```
 
 ## templates/_helpers.tpl
 Standard-Labels `app.kubernetes.io/*` für alle Ressourcen. Deployment und Service selektieren weiter über `app`, weil sich der Selector eines bestehenden Deployments nicht ändern lässt.

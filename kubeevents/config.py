@@ -2,8 +2,10 @@
 
 from functools import cache
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from kubeevents.auth import is_bcrypt_hash
 
 
 class Settings(BaseSettings):
@@ -35,10 +37,27 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    # Basic Auth für UI und API, aktiv wenn beide Werte gesetzt sind. /healthz, /readyz und /metrics bleiben offen.
+    basic_auth_user: str = ""
+    # bcrypt-Hash des Passworts, erzeugt mit `uv run python -m kubeevents.auth` oder `htpasswd -nbBC 12 user pw`
+    basic_auth_password_hash: str = ""
+
     # Nur für den Start über main.py
     host: str = "0.0.0.0"
     port: int = 8001
     reload: bool = False
+
+    @model_validator(mode="after")
+    def check_basic_auth(self) -> Settings:
+        if bool(self.basic_auth_user) != bool(self.basic_auth_password_hash):
+            raise ValueError("BASIC_AUTH_USER und BASIC_AUTH_PASSWORD_HASH nur gemeinsam setzen")
+        if self.basic_auth_password_hash and not is_bcrypt_hash(self.basic_auth_password_hash):
+            raise ValueError("BASIC_AUTH_PASSWORD_HASH ist kein bcrypt-Hash ($2a$, $2b$ oder $2y$)")
+        return self
+
+    @property
+    def basic_auth_enabled(self) -> bool:
+        return bool(self.basic_auth_user and self.basic_auth_password_hash)
 
     @property
     def namespaces(self) -> list[str]:
