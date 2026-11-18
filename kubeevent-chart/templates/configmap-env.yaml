@@ -8,4 +8,11 @@ data:
   # SQLite-Datei auf dem persistenten Volume
   DB_PATH: {{ printf "%s/events.db" .Values.persistence.mountPath | quote }}
   # Dieselbe Liste wie für die RBAC-Rollen
-  POD_NAMESPACE: {{ join "," .Values.watchNamespaces | quote }}
+  WATCH_NAMESPACES: {{ join "," .Values.watchNamespaces | quote }}
+  RETENTION_DAYS: {{ .Values.config.retentionDays | quote }}
+  METRICS_SERIES_TTL_HOURS: {{ .Values.config.metricsSeriesTtlHours | quote }}
+  QUEUE_MAXSIZE: {{ .Values.config.queueMaxsize | quote }}
+  BATCH_MAX_SIZE: {{ .Values.config.batchMaxSize | quote }}
+  BATCH_MAX_DELAY: {{ .Values.config.batchMaxDelay | quote }}
+  WATCH_TIMEOUT_SECONDS: {{ .Values.config.watchTimeoutSeconds | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}

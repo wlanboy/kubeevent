@@ -109,8 +109,25 @@ serviceAccount:
 rbac:
   create: true
 
-# Namespaces, deren Events gelesen werden: RBAC-Rollen und POD_NAMESPACE der App
+# Namespaces, deren Events gelesen werden: RBAC-Rollen und WATCH_NAMESPACES der App
 watchNamespaces:
   - kubeevent
   - simpleservice
   - randomfail
+
+# Einstellungen der App, landen als Environment-Variablen in der ConfigMap.
+# DB_PATH kommt aus persistence.mountPath, WATCH_NAMESPACES aus watchNamespaces.
+config:
+  # Events, die älter sind, löscht der stündliche Retention-Job (RETENTION_DAYS)
+  retentionDays: 7
+  # Metrik-Zeitreihen ohne neues Event in diesem Zeitraum verschwinden aus /metrics (METRICS_SERIES_TTL_HOURS)
+  metricsSeriesTtlHours: 24
+  # Puffer zwischen Watchern und DB-Worker (QUEUE_MAXSIZE)
+  queueMaxsize: 10000
+  # Größe (max. 2000) und maximale Wartezeit in Sekunden eines Batches im DB-Worker (BATCH_MAX_SIZE, BATCH_MAX_DELAY)
+  batchMaxSize: 500
+  batchMaxDelay: 0.2
+  # Nach dieser Zeit beendet der API-Server einen Watch, der Watcher verbindet sich neu (WATCH_TIMEOUT_SECONDS)
+  watchTimeoutSeconds: 300
+  # DEBUG, INFO, WARNING oder ERROR (LOG_LEVEL)
+  logLevel: INFO

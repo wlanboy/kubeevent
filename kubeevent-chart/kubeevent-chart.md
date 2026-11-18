@@ -6,7 +6,7 @@ Helm-Chart zum Deployment von kubeevent in einem Kubernetes-Cluster. Das Chart e
 Chart-Metadaten (Name `kubeevent`, Typ `application`, Version). Beschreibt das Chart als "Kube Event Listener deployment with Istio Gateway and cert-manager".
 
 ## values.yaml
-Zentrale Konfigurationsdatei des Charts. Steuert u. a. Image/Tag, Replica-Anzahl, Service (Name/Port), Persistenz der Datenbank (`persistence`), Ressourcen (`resources`), Shutdown-Zeiten (`shutdown`), Probes (`probes`), Security-Context (`podSecurityContext`, `securityContext`), Istio (Hosts, Gateway-Selector, TLS), cert-manager-Issuer, ServiceAccount, RBAC (`rbac.create`) und die zu überwachenden Namespaces (`watchNamespaces`). `istio.hosts` gilt für Gateway, VirtualService und Zertifikat.
+Zentrale Konfigurationsdatei des Charts. Steuert u. a. Image/Tag, Replica-Anzahl, Service (Name/Port), Persistenz der Datenbank (`persistence`), Ressourcen (`resources`), Shutdown-Zeiten (`shutdown`), Probes (`probes`), Security-Context (`podSecurityContext`, `securityContext`), Istio (Hosts, Gateway-Selector, TLS), cert-manager-Issuer, ServiceAccount, RBAC (`rbac.create`) die zu überwachenden Namespaces (`watchNamespaces`) und die Einstellungen der App (`config`: Retention, Metrik-Aufräumen, Queue, Batches, Watch-Timeout, Log-Level). `istio.hosts` gilt für Gateway, VirtualService und Zertifikat.
 
 ## templates/deployment.yaml
 Deployment der kubeevent-Anwendung. Startet den Container als UID 1000 mit read-only Root-Dateisystem. Das PVC hängt unter `/app/data`, `/tmp` ist ein `emptyDir`. Die Environment-Variablen kommen per `envFrom` aus der ConfigMap. Mit PVC nutzt das Deployment `strategy: Recreate`, damit nie zwei Pods dieselbe SQLite-Datei öffnen. Mehr als eine Replica auf einem ReadWriteOnce-PVC lehnt das Template ab.
@@ -20,7 +20,7 @@ ClusterIP-Service, der den kubeevent-Pod unter dem konfigurierten Port erreichba
 PersistentVolumeClaim für die SQLite-Datenbank unter `persistence.mountPath`, abschaltbar per `persistence.enabled` (dann `emptyDir`, Daten gehen beim Neustart verloren). Durch `helm.sh/resource-policy: keep` bleibt das PVC bei `helm uninstall` erhalten.
 
 ## templates/configmap-env.yaml
-ConfigMap mit `DB_PATH` (aus `persistence.mountPath`) und `POD_NAMESPACE` (aus `watchNamespaces`). Eine Änderung startet den Pod über die Checksum-Annotation neu.
+ConfigMap mit `DB_PATH` (aus `persistence.mountPath`), `WATCH_NAMESPACES` (aus `watchNamespaces`) und den Werten aus `config`. Eine Änderung startet den Pod über die Checksum-Annotation neu.
 
 ## templates/_helpers.tpl
 Standard-Labels `app.kubernetes.io/*` für alle Ressourcen. Deployment und Service selektieren weiter über `app`, weil sich der Selector eines bestehenden Deployments nicht ändern lässt.

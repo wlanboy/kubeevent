@@ -31,7 +31,7 @@ Exposes /metrics with:
 ```
 +-------------------+        +---------------------+
 | Kubernetes API     | ----> | FastAPI Watcher     |
-| (Events)           |       | (k8s_watcher.py)    |
+| (Events)           |       | (watcher.py)        |
 +-------------------+        +---------------------+
                                     |
                                     v
@@ -51,8 +51,32 @@ Exposes /metrics with:
 ## start from scratch
 - uv lock --upgrade
 - uv sync
-- uv pip compile pyproject.toml -o requirements.txt
-- uv run uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+- uv export --format requirements-txt --no-hashes --no-dev --no-emit-project -o requirements.txt
+- cp .env-example .env
+- uv run main.py (or `uv run uvicorn main:app --port 8001 --reload`)
+
+## checks
+- uv run ruff check .
+- uv run pyright
+- uv run pytest
+
+## configuration
+Settings come from environment variables or from `.env`. `.env-example` lists all of them with comments,
+the code is in `kubeevents/config.py`.
+
+| Variable | Default | Meaning |
+|----------|---------|-----------|
+| `DB_PATH` | `data/events.db` | Path to the SQLite file |
+| `WATCH_NAMESPACES` | `demo` | Comma-separated list of watched namespaces |
+| `POD_NAMESPACE` | | Former name of `WATCH_NAMESPACES`, only used if `WATCH_NAMESPACES` is empty |
+| `RETENTION_DAYS` | `7` | The hourly retention job deletes older events |
+| `METRICS_SERIES_TTL_HOURS` | `24` | Metric series without a new event for this long are removed from `/metrics` |
+| `QUEUE_MAXSIZE` | `10000` | Buffer between the watchers and the DB worker |
+| `BATCH_MAX_SIZE` | `500` | Maximum batch size of the DB worker (at most 2000) |
+| `BATCH_MAX_DELAY` | `0.2` | Maximum time in seconds the DB worker collects a batch |
+| `WATCH_TIMEOUT_SECONDS` | `300` | The API server ends a watch after this time, the watcher reconnects |
+| `LOG_LEVEL` | `INFO` | Log level |
+| `HOST`, `PORT`, `RELOAD` | `0.0.0.0`, `8001`, `false` | Only used when starting with `uv run main.py` |
 
 ## access ui and metrics
 - http://localhost:8001
@@ -97,7 +121,7 @@ docker run --rm \
   -p 5000:5000 \
   -v $(pwd)/data:/app/data \
   -v $HOME/.kube/config:/home/appuser/.kube/config:ro \
-  -e POD_NAMESPACE=kubeevent,randomfail \
+  -e WATCH_NAMESPACES=kubeevent,randomfail \
   -e DB_PATH=/app/data/events.db \
   kubeevent
 ```
