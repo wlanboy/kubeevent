@@ -243,7 +243,8 @@ async def stream_events(request: Request, limit: int = Query(100, ge=1, le=500))
     """Sendet beim Verbinden einen Snapshot, danach nur neu gespeicherte Events.
 
     Der Stream wartet auf Meldungen des DB-Workers. Kommt bis zum Keep-alive keine Meldung, fragt er die
-    Datenbank trotzdem einmal ab.
+    Datenbank trotzdem einmal ab. Er endet, sobald der Notifier geschlossen wird, damit uvicorn beim Shutdown
+    nicht auf offene Verbindungen wartet.
     """
     runtime: Runtime = request.app.state.runtime
 
@@ -254,9 +255,9 @@ async def stream_events(request: Request, limit: int = Query(100, ge=1, le=500))
             events, last_id = await asyncio.to_thread(_fetch_latest, limit)
             yield _sse("snapshot", events)
 
-            while not runtime.stop.is_set():
+            while not runtime.notifier.closed:
                 notified = await runtime.notifier.wait_newer(last_id, STREAM_KEEPALIVE_SECONDS)
-                if runtime.stop.is_set():
+                if runtime.notifier.closed:
                     break
 
                 newer = await asyncio.to_thread(_fetch_newer, last_id, limit)

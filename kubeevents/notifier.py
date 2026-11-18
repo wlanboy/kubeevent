@@ -11,13 +11,17 @@ class EventNotifier:
         self._latest_id = 0
         self._closed = False
 
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
     async def publish(self, latest_id: int) -> None:
         async with self._condition:
             self._latest_id = max(self._latest_id, latest_id)
             self._condition.notify_all()
 
     async def close(self) -> None:
-        """Weckt alle wartenden Streams beim Shutdown."""
+        """Beendet alle offenen Streams beim Shutdown."""
         async with self._condition:
             self._closed = True
             self._condition.notify_all()

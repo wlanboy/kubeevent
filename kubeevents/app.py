@@ -2,8 +2,11 @@
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+import signal
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from types import FrameType
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -56,6 +59,36 @@ async def run_background(runtime: Runtime, settings: Settings) -> None:
     logger.info("Background tasks stopped")
 
 
+def close_streams_on_signal(runtime: Runtime) -> Callable[[], None]:
+    """Schließt die SSE-Streams schon beim SIGINT oder SIGTERM.
+
+    uvicorn wartet nach dem Signal erst auf offene Verbindungen und ruft danach den lifespan-Shutdown auf. SSE-Streams
+    enden aber nie von selbst. Der Hook legt sich vor den Handler von uvicorn und ruft ihn danach auf. Gibt eine
+    Funktion zurück, die die vorherigen Handler wiederherstellt.
+    """
+    loop = asyncio.get_running_loop()
+    previous: dict[signal.Signals, Any] = {}
+
+    def handler(sig: int, frame: FrameType | None) -> None:
+        loop.call_soon_threadsafe(lambda: loop.create_task(runtime.notifier.close()))
+        prev = previous[signal.Signals(sig)]
+        if callable(prev):
+            prev(sig, frame)
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            previous[sig] = signal.signal(sig, handler)
+        except ValueError:
+            # Nicht im Main-Thread, etwa im TestClient
+            return lambda: None
+
+    def restore() -> None:
+        for sig, prev in previous.items():
+            signal.signal(sig, prev)
+
+    return restore
+
+
 def create_app(settings: Settings | None = None, *, background: bool = True) -> FastAPI:
     """Baut die App. Mit background=False starten keine Watcher, das ist für Tests gedacht."""
     settings = settings or get_settings()
@@ -68,6 +101,7 @@ def create_app(settings: Settings | None = None, *, background: bool = True) -> 
 
         runtime = Runtime(queue=asyncio.Queue(maxsize=settings.queue_maxsize))
         app.state.runtime = runtime
+        restore_signals = close_streams_on_signal(runtime)
         if background:
             runtime.background = asyncio.create_task(run_background(runtime, settings), name="background")
         logger.info("Startup complete")
@@ -75,6 +109,7 @@ def create_app(settings: Settings | None = None, *, background: bool = True) -> 
         yield
 
         logger.info("Shutdown initiated")
+        restore_signals()
         runtime.stop.set()
         await runtime.notifier.close()
         if runtime.background is not None and not runtime.background.done():
