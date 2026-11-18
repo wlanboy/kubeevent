@@ -2,11 +2,14 @@
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from fastapi.templating import Jinja2Templates
+from prometheus_client import REGISTRY
 from sqlmodel import Session, col, func, select
 
 from db import engine, get_session
@@ -17,6 +20,32 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+
+STREAM_POLL_SECONDS = 2
+STREAM_KEEPALIVE_SECONDS = 15
+DATETIME_FIELDS = ("created_at", "first_timestamp", "last_timestamp")
+
+
+def event_to_dict(ev: K8sEvent) -> dict[str, Any]:
+    """Serialisiert ein Event. SQLite liefert naive Zeitstempel in UTC, die bekommen hier ihre Zeitzone."""
+    data = ev.model_dump()
+    for field in DATETIME_FIELDS:
+        value = data.get(field)
+        if isinstance(value, datetime) and value.tzinfo is None:
+            data[field] = value.replace(tzinfo=UTC)
+    return jsonable_encoder(data)
+
+
+def to_db_time(value: datetime) -> datetime:
+    """Wandelt einen Zeitpunkt in naive UTC um, so wie SQLite ihn speichert."""
+    if value.tzinfo is not None:
+        value = value.astimezone(UTC).replace(tzinfo=None)
+    return value
+
+
+def utc_now_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
 
 @router.get("/")
 def index(request: Request):
@@ -55,12 +84,17 @@ def metrics():
 @router.get("/events/latest")
 def latest_events(session: Session = Depends(get_session)):
     stmt = select(K8sEvent).order_by(col(K8sEvent.created_at).desc()).limit(100)
-    return list(session.exec(stmt).all())
+    return [event_to_dict(ev) for ev in session.exec(stmt).all()]
 
 
 @router.get("/events/search")
 def search_events(
     q: str | None = None,
+    event_type: str | None = Query(None, alias="type"),
+    namespace: str | None = None,
+    kind: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
     session: Session = Depends(get_session)
@@ -80,12 +114,26 @@ def search_events(
             col(K8sEvent.component).ilike(like) |
             col(K8sEvent.host).ilike(like)
         )
+    if event_type:
+        stmt = stmt.where(col(K8sEvent.type) == event_type)
+    if namespace:
+        stmt = stmt.where(col(K8sEvent.namespace) == namespace)
+    if kind:
+        stmt = stmt.where(col(K8sEvent.involved_kind) == kind)
+    if since:
+        stmt = stmt.where(col(K8sEvent.created_at) >= to_db_time(since))
+    if until:
+        stmt = stmt.where(col(K8sEvent.created_at) <= to_db_time(until))
 
     total = session.exec(select(func.count()).select_from(stmt.subquery())).one()
 
     offset = (page - 1) * page_size
-    stmt = stmt.order_by(col(K8sEvent.created_at).desc()).offset(offset).limit(page_size)
-    items = list(session.exec(stmt).all())
+    stmt = (
+        stmt.order_by(col(K8sEvent.created_at).desc(), col(K8sEvent.id).desc())
+        .offset(offset)
+        .limit(page_size)
+    )
+    items = [event_to_dict(ev) for ev in session.exec(stmt).all()]
 
     return {
         "items": items,
@@ -95,24 +143,132 @@ def search_events(
         "pages": (total + page_size - 1) // page_size
     }
 
+
+@router.get("/events/facets")
+def event_facets(session: Session = Depends(get_session)):
+    """Werte für die Filter-Dropdowns der Suche."""
+    namespaces = session.exec(
+        select(K8sEvent.namespace).distinct().order_by(col(K8sEvent.namespace))
+    ).all()
+    kinds = session.exec(
+        select(K8sEvent.involved_kind)
+        .where(col(K8sEvent.involved_kind).is_not(None))
+        .distinct()
+        .order_by(col(K8sEvent.involved_kind))
+    ).all()
+    return {"namespaces": list(namespaces), "kinds": list(kinds)}
+
+
+@router.get("/events/stats")
+def event_stats(
+    hours: int = Query(24, ge=1, le=24 * 7),
+    top: int = Query(10, ge=1, le=50),
+    session: Session = Depends(get_session),
+):
+    """Kennzahlen aus der Datenbank für das gewählte Zeitfenster."""
+    since = utc_now_naive() - timedelta(hours=hours)
+    in_window = col(K8sEvent.created_at) >= since
+    is_warning = col(K8sEvent.type) == "Warning"
+    count = func.count().label("count")
+
+    by_type = session.exec(
+        select(K8sEvent.type, count).where(in_window).group_by(col(K8sEvent.type))
+    ).all()
+
+    namespaces = session.exec(
+        select(func.count(func.distinct(col(K8sEvent.namespace)))).where(in_window)
+    ).one()
+
+    top_namespaces = session.exec(
+        select(K8sEvent.namespace, count)
+        .where(in_window, is_warning)
+        .group_by(col(K8sEvent.namespace))
+        .order_by(count.desc())
+        .limit(top)
+    ).all()
+
+    top_reasons = session.exec(
+        select(K8sEvent.reason, count)
+        .where(in_window, is_warning)
+        .group_by(col(K8sEvent.reason))
+        .order_by(count.desc())
+        .limit(top)
+    ).all()
+
+    top_objects = session.exec(
+        select(K8sEvent.namespace, K8sEvent.involved_kind, K8sEvent.involved_name, count)
+        .where(in_window, is_warning)
+        .group_by(col(K8sEvent.namespace), col(K8sEvent.involved_kind), col(K8sEvent.involved_name))
+        .order_by(count.desc())
+        .limit(top)
+    ).all()
+
+    type_counts = {t or "Unknown": c for t, c in by_type}
+
+    return {
+        "hours": hours,
+        "total": sum(type_counts.values()),
+        "by_type": type_counts,
+        "namespaces": namespaces,
+        "top_warning_namespaces": [{"namespace": ns, "count": c} for ns, c in top_namespaces],
+        "top_warning_reasons": [{"reason": r, "count": c} for r, c in top_reasons],
+        "top_warning_objects": [
+            {"namespace": ns, "kind": k, "name": n, "count": c} for ns, k, n, c in top_objects
+        ],
+        "watcher": {
+            "restarts": int(REGISTRY.get_sample_value("kubeevents_watch_restarts_total") or 0),
+            "errors": int(REGISTRY.get_sample_value("kubeevents_watch_errors_total") or 0),
+        },
+    }
+
+
+def _fetch_latest(limit: int) -> list[dict[str, Any]]:
+    with Session(engine) as session:
+        stmt = select(K8sEvent).order_by(col(K8sEvent.id).desc()).limit(limit)
+        return [event_to_dict(ev) for ev in session.exec(stmt).all()]
+
+
+def _fetch_newer(last_id: int, limit: int) -> list[dict[str, Any]]:
+    with Session(engine) as session:
+        stmt = (
+            select(K8sEvent)
+            .where(col(K8sEvent.id) > last_id)
+            .order_by(col(K8sEvent.id).desc())
+            .limit(limit)
+        )
+        return [event_to_dict(ev) for ev in session.exec(stmt).all()]
+
+
+def _sse(event: str, payload: Any) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+
+
 @router.get("/events/stream")
 async def stream_events(limit: int = Query(100, ge=1, le=500)):
+    """Sendet beim Verbinden einen Snapshot, danach nur neue Events (neueste zuerst)."""
     async def event_generator():
         try:
+            yield f"retry: {STREAM_POLL_SECONDS * 1500}\n\n"
+
+            events = await asyncio.to_thread(_fetch_latest, limit)
+            last_id = events[0]["id"] if events else 0
+            yield _sse("snapshot", events)
+
+            idle = 0
             while not shutdown_event.is_set():
-                # Session innerhalb der Loop erstellen um Lifecycle-Probleme zu vermeiden
-                with Session(engine) as session:
-                    stmt = select(K8sEvent).order_by(col(K8sEvent.created_at).desc()).limit(limit)
-                    events = list(session.exec(stmt).all())
-                    json_data = json.dumps(jsonable_encoder(events))
+                await asyncio.sleep(STREAM_POLL_SECONDS)
 
-                # SSE event
-                yield f"data: {json_data}\n\n"
+                newer = await asyncio.to_thread(_fetch_newer, last_id, limit)
+                if newer:
+                    last_id = newer[0]["id"]
+                    idle = 0
+                    yield _sse("append", newer)
+                    continue
 
-                # keep-alive comment
-                yield ": keep-alive\n\n"
-
-                await asyncio.sleep(2)
+                idle += STREAM_POLL_SECONDS
+                if idle >= STREAM_KEEPALIVE_SECONDS:
+                    idle = 0
+                    yield ": keep-alive\n\n"
 
         except asyncio.CancelledError:
             logger.debug("SSE client disconnected or shutdown")
@@ -130,4 +286,3 @@ async def stream_events(limit: int = Query(100, ge=1, le=500)):
         media_type="text/event-stream",
         headers=headers
     )
-
