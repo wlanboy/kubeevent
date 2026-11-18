@@ -1,93 +1,146 @@
 <!DOCTYPE html>
-<html data-theme="dark">
+<html lang="en">
 
 <head>
     <meta charset="utf-8">
-    <title>Kubernetes Events Viewer</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Kubernetes Events</title>
+    <link rel="stylesheet" href="/static/vendor/pico-2.1.1.min.css">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 
 <body>
 
-    <main class="container">
+    <main class="container-fluid">
 
-        <h1>Kubernetes Events</h1>
+        <header class="page-header">
+            <h1>Kubernetes Events</h1>
+            <span id="connStatus" class="status" data-state="connecting" role="status">Connecting…</span>
+        </header>
 
         <nav>
-            <ul>
-                <li><a href="#" data-tab="stream" class="tab active">Stream</a></li>
-                <li><a href="#" data-tab="search" class="tab">Suche</a></li>
-                <li><a href="#" data-tab="stats" class="tab">Stats</a></li>
+            <ul role="tablist" aria-label="Views">
+                <li role="presentation"><a href="#stream" id="tab-btn-stream" class="tab" role="tab" data-tab="stream" aria-controls="tab-stream" aria-selected="true">Stream</a></li>
+                <li role="presentation"><a href="#search" id="tab-btn-search" class="tab" role="tab" data-tab="search" aria-controls="tab-search" aria-selected="false" tabindex="-1">Search</a></li>
+                <li role="presentation"><a href="#stats" id="tab-btn-stats" class="tab" role="tab" data-tab="stats" aria-controls="tab-stats" aria-selected="false" tabindex="-1">Stats</a></li>
             </ul>
         </nav>
 
         <!-- STREAM TAB -->
-        <section id="tab-stream" class="tab-content active">
+        <section id="tab-stream" role="tabpanel" aria-labelledby="tab-btn-stream">
             <fieldset role="group">
-                <input id="streamFilter" type="search" placeholder="Filter (Type, Reason, Message, Name, Namespace...)">
-
-                <select id="limitSelect" style="max-width: 150px;">
-                    <option value="20">20 Events</option>
-                    <option value="50">50 Events</option>
-                    <option value="100" selected>100 Events</option>
-                    <option value="200">200 Events</option>
-                    <option value="500">500 Events</option>
+                <input id="streamFilter" type="search" aria-label="Filter events"
+                    placeholder="Filter (type, reason, message, name, namespace, component, host)">
+                <select id="limitSelect" class="limit-select" aria-label="Number of events kept in the stream">
+                    <option value="20">20 events</option>
+                    <option value="50">50 events</option>
+                    <option value="100" selected>100 events</option>
+                    <option value="200">200 events</option>
+                    <option value="500">500 events</option>
                 </select>
-
-                <button class="outline" onclick="document.getElementById('streamFilter').value=''; renderStream();"
-                    style="width: auto;">
-                    Reset
-                </button>
+                <button id="streamPause" type="button" class="secondary" aria-pressed="false">Pause</button>
+                <button id="streamClear" type="button" class="outline">Clear</button>
             </fieldset>
 
-            <table id="streamTable">
-                <thead>
-                    <tr>
-                        <th>Time</th>
-                        <th>Type</th>
-                        <th>Reason</th>
-                        <th>Message</th>
-                        <th>Object</th>
-                    </tr>
-                </thead>
-                <tbody id="streamBody"></tbody>
-            </table>
-            <nav aria-label="Pagination">
-                <ul id="streamPagination"></ul>
-            </nav>
+            <p id="streamInfo" class="table-info" aria-live="polite"></p>
 
+            <div class="table-container">
+                <table class="event-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Last seen</th>
+                            <th scope="col">Type</th>
+                            <th scope="col">Reason</th>
+                            <th scope="col">Message</th>
+                            <th scope="col">Object</th>
+                        </tr>
+                    </thead>
+                    <tbody id="streamBody"></tbody>
+                </table>
+            </div>
+
+            <nav aria-label="Stream pagination">
+                <ul id="streamPagination" class="pager"></ul>
+            </nav>
         </section>
 
         <!-- SEARCH TAB -->
-        <section id="tab-search" class="tab-content">
-            <fieldset role="group">
-                <input id="searchInput" placeholder="Suchtext...">
-                <button id="searchBtn">Suchen</button>
-            </fieldset>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Time</th>
-                        <th>Type</th>
-                        <th>Reason</th>
-                        <th>Message</th>
-                        <th>Object</th>
-                    </tr>
-                </thead>
-                <tbody id="searchResults"></tbody>
-            </table>
+        <section id="tab-search" role="tabpanel" aria-labelledby="tab-btn-search" hidden>
+            <form id="searchForm">
+                <fieldset role="group">
+                    <input id="searchInput" type="search" aria-label="Search text"
+                        placeholder="Search text (message, name, reason, component, host …)">
+                    <button id="searchBtn" type="submit">Search</button>
+                </fieldset>
+                <div class="search-filters">
+                    <label>Type
+                        <select id="searchType">
+                            <option value="">All</option>
+                            <option value="Warning">Warning</option>
+                            <option value="Normal">Normal</option>
+                        </select>
+                    </label>
+                    <label>Namespace
+                        <select id="searchNamespace">
+                            <option value="">All</option>
+                        </select>
+                    </label>
+                    <label>Kind
+                        <select id="searchKind">
+                            <option value="">All</option>
+                        </select>
+                    </label>
+                    <label>Received
+                        <select id="searchRange">
+                            <option value="">Any time</option>
+                            <option value="1">Last hour</option>
+                            <option value="6">Last 6 hours</option>
+                            <option value="24">Last 24 hours</option>
+                            <option value="168">Last 7 days</option>
+                        </select>
+                    </label>
+                    <button id="searchReset" type="button" class="outline">Reset</button>
+                </div>
+            </form>
 
-            <nav aria-label="Pagination">
-                <ul id="searchPagination"></ul>
+            <p id="searchInfo" class="table-info" aria-live="polite"></p>
+
+            <div class="table-container">
+                <table class="event-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Last seen</th>
+                            <th scope="col">Type</th>
+                            <th scope="col">Reason</th>
+                            <th scope="col">Message</th>
+                            <th scope="col">Object</th>
+                        </tr>
+                    </thead>
+                    <tbody id="searchResults"></tbody>
+                </table>
+            </div>
+
+            <nav aria-label="Search pagination">
+                <ul id="searchPagination" class="pager"></ul>
             </nav>
-
         </section>
 
         <!-- STATS TAB -->
-        <section id="tab-stats" class="tab-content">
-            <h3>Statistiken</h3>
-            <div id="statsList" style="margin-bottom: 2rem;"></div>
+        <section id="tab-stats" role="tabpanel" aria-labelledby="tab-btn-stats" hidden>
+            <div class="stats-toolbar">
+                <label>Time window
+                    <select id="statsRange">
+                        <option value="1">Last hour</option>
+                        <option value="6">Last 6 hours</option>
+                        <option value="24" selected>Last 24 hours</option>
+                        <option value="168">Last 7 days</option>
+                    </select>
+                </label>
+                <button id="statsRefresh" type="button" class="outline">Refresh</button>
+                <small id="statsUpdated" class="muted" aria-live="polite"></small>
+            </div>
+            <div id="statsContent"></div>
         </section>
 
     </main>
