@@ -23,7 +23,7 @@ persistence:
   storageClassName: "local-path"
   size: "100Mi"
 
-# Ein uvicorn-Prozess: CPU-Limit für einen Kern, Werte gemessen mit kubectl top
+# Ein uvicorn-Prozess. Gemessen (kind, 2 Namespaces): ~100Mi im Leerlauf, Spitze 112Mi unter Last, CPU 2m im Leerlauf
 resources:
   requests:
     cpu: 50m
