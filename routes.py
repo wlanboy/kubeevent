@@ -222,10 +222,17 @@ def event_stats(
     }
 
 
-def _fetch_latest(limit: int) -> list[dict[str, Any]]:
+def _fetch_latest(limit: int) -> tuple[list[dict[str, Any]], int]:
+    """Letzte Events nach Eingang plus höchste ID als Startpunkt für Deltas."""
     with Session(engine) as session:
-        stmt = select(K8sEvent).order_by(col(K8sEvent.id).desc()).limit(limit)
-        return [event_to_dict(ev) for ev in session.exec(stmt).all()]
+        stmt = (
+            select(K8sEvent)
+            .order_by(col(K8sEvent.created_at).desc(), col(K8sEvent.id).desc())
+            .limit(limit)
+        )
+        events = [event_to_dict(ev) for ev in session.exec(stmt).all()]
+        max_id = session.exec(select(func.max(K8sEvent.id))).one() or 0
+        return events, max_id
 
 
 def _fetch_newer(last_id: int, limit: int) -> list[dict[str, Any]]:
@@ -245,13 +252,12 @@ def _sse(event: str, payload: Any) -> str:
 
 @router.get("/events/stream")
 async def stream_events(limit: int = Query(100, ge=1, le=500)):
-    """Sendet beim Verbinden einen Snapshot, danach nur neue Events (neueste zuerst)."""
+    """Sendet beim Verbinden einen Snapshot, danach nur neu gespeicherte Events."""
     async def event_generator():
         try:
             yield f"retry: {STREAM_POLL_SECONDS * 1500}\n\n"
 
-            events = await asyncio.to_thread(_fetch_latest, limit)
-            last_id = events[0]["id"] if events else 0
+            events, last_id = await asyncio.to_thread(_fetch_latest, limit)
             yield _sse("snapshot", events)
 
             idle = 0
@@ -260,7 +266,7 @@ async def stream_events(limit: int = Query(100, ge=1, le=500)):
 
                 newer = await asyncio.to_thread(_fetch_newer, last_id, limit)
                 if newer:
-                    last_id = newer[0]["id"]
+                    last_id = max(ev["id"] for ev in newer)
                     idle = 0
                     yield _sse("append", newer)
                     continue
