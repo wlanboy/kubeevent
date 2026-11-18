@@ -130,3 +130,14 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Routen aus routes.py einbinden
 app.include_router(router)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "main:app",
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", "8001")),
+        reload=os.getenv("RELOAD", "false").lower() == "true",
+    )
