@@ -26,14 +26,13 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --locked
 
-      - name: Static Analysis (Linting)
-        # Statt manueller compile-Befehle nutzen wir Ruff (extrem schnell)
-        # Es prüft Syntax, Imports und Logikfehler in allen Dateien gleichzeitig
+      - name: Lint
         run: uv run ruff check .
 
-      - name: Verify FastAPI app imports
-        # Wir nutzen Umgebungsvariablen, falls deine App beim Import DB-Configs braucht
-        run: |
-          uv run python -c "from main import app; print('🚀 FastAPI app imported successfully')"
+      - name: Type check
+        run: uv run pyright
+
+      - name: Tests
+        run: uv run pytest
