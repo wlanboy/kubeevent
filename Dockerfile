@@ -1,13 +1,16 @@
 ARG PYTHON_TAG=3.15-slim
 
-# Build-Stage: venv nur aus fertigen Wheels, kein Compiler nötig
+# Build-Stage: venv nur aus fertigen Wheels, kein Compiler nötig.
+# Ausnahme PyYAML: Für Python 3.15 gibt es kein Wheel. Ohne Compiler baut pip aus dem sdist die reine
+# Python-Variante ohne libyaml. Der Kubernetes-Client braucht PyYAML nur für die lokale kubeconfig.
+# Die Ausnahme entfernen, sobald PyYAML ein cp315-Wheel veröffentlicht.
 FROM python:${PYTHON_TAG} AS build
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 WORKDIR /app
 COPY requirements.txt .
 RUN python -m venv /opt/venv && \
-    /opt/venv/bin/pip install --only-binary=:all: -r requirements.txt && \
+    /opt/venv/bin/pip install --only-binary=:all: --no-binary=pyyaml -r requirements.txt && \
     mkdir -p /app/data
 
 
@@ -35,7 +38,8 @@ WORKDIR /app
 COPY --from=build /opt/venv /opt/venv
 COPY --from=build --chown=appuser:appuser /app/data /app/data
 
-COPY main.py db.py models.py metrics.py k8s_watcher.py runtime.py routes.py ./
+COPY main.py ./
+COPY kubeevents/ ./kubeevents/
 COPY static/ ./static/
 COPY templates/ ./templates/
 
