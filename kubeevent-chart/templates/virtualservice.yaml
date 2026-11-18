@@ -1,16 +1,16 @@
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: {{ .Values.deploymentName }}-vs
+  labels:
+    {{- include "kubeevent.labels" . | nindent 4 }}
 spec:
   hosts:
-  {{- range .Values.istio.hosts }}
-    - {{ . }}
-  {{- end }}
+    {{- toYaml .Values.istio.hosts | nindent 4 }}
+  # eigener Namespace für das Mesh, Gateway-Namespace für den Ingress
   exportTo:
-  - "."
-  - istio-ingress
-  - istio-system
+    - "."
+    - {{ .Values.istio.gatewayNamespace | quote }}
   gateways:
     - {{ .Values.istio.gatewayName }}
     - mesh

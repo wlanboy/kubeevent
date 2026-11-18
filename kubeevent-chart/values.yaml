@@ -3,6 +3,7 @@ image:
   tag: latest
   pullPolicy: Always
 
+# Mit persistence.enabled und ReadWriteOnce nur 1 Replica (SQLite)
 replicaCount: 1
 deploymentName: kubeevent
 
@@ -12,47 +13,104 @@ service:
   port: 5000
   targetPort: 5000
 
-pvc:
+# Volume für die SQLite-Datenbank (DB_PATH = <mountPath>/events.db)
+persistence:
   enabled: true
-  name: kubeevent-tmp-pvc
+  claimName: kubeevent-data-pvc
+  mountPath: /app/data
   accessModes:
     - ReadWriteOnce
   storageClassName: "local-path"
   size: "100Mi"
 
-volume:
-  mountPath: /tmp
+# Ein uvicorn-Prozess: CPU-Limit für einen Kern, Werte gemessen mit kubectl top
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# terminationGracePeriodSeconds = preStopSleepSeconds + appShutdownSeconds + 5
+shutdown:
+  # Zeit, bis Service-Endpoints und Istio den Pod nicht mehr ansprechen
+  preStopSleepSeconds: 10
+  # uvicorn --timeout-graceful-shutdown 10 plus 5 s Timeout der TaskGroup
+  appShutdownSeconds: 15
+
+probes:
+  # bis zu 60 s für den Start (DB anlegen, Watcher starten)
+  startup:
+    periodSeconds: 2
+    failureThreshold: 30
+    timeoutSeconds: 2
+  liveness:
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 2
+  readiness:
+    periodSeconds: 5
+    failureThreshold: 3
+    timeoutSeconds: 2
+
+# /tmp als emptyDir, das Root-Dateisystem ist read-only
+tmp:
+  sizeLimit: 64Mi
+
+# UID/GID 1000 wie im Dockerfile
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
 
 istio:
   gatewayName: kubeevent-gw
+  # Namespace des Ingress-Gateway-Pods, dort liegt auch das TLS-Secret
   gatewayNamespace: "istio-ingress"
-  hosts: 
+  # Labels des Ingress-Gateway-Pods
+  gatewaySelector:
+    istio: ingressgateway
+  # Hosts für Gateway, VirtualService und Zertifikat
+  hosts:
     - kubeevent.tp.lan
     - kubeevent.gmk.lan
+  # HTTPS-Server im Gateway, Secret aus cert-manager oder von Hand angelegt
   tls:
     enabled: true
     secretName: kubeevent-tls
 
+# Erzeugt das TLS-Secret, nur wirksam mit istio.tls.enabled
 certManager:
   enabled: true
   issuerRef:
     kind: ClusterIssuer
     name: "local-ca-issuer"
-  dnsNames:
-    - kubeevent.tp.lan
-    - kubeevent.gmk.lan
 
 serviceAccount:
   create: true
   name: kubeeventspy
 
+# Role und RoleBinding pro Namespace in watchNamespaces, auch für einen fremden ServiceAccount
+rbac:
+  create: true
+
+# Namespaces, deren Events gelesen werden: RBAC-Rollen und POD_NAMESPACE der App
 watchNamespaces:
   - kubeevent
   - simpleservice
   - randomfail
-
-envConfig:
-  enabled: true
-  data: |
-    DB_PATH=/app/data/events.db
-    POD_NAMESPACE=kubeevent,simpleservice,randomfail

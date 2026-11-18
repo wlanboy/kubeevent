@@ -1,14 +1,19 @@
-{{- if .Values.pvc.enabled }}
+{{- if .Values.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ .Values.pvc.name }}
+  name: {{ .Values.persistence.claimName }}
+  labels:
+    {{- include "kubeevent.labels" . | nindent 4 }}
+  annotations:
+    # helm uninstall löscht die Datenbank nicht mit
+    helm.sh/resource-policy: keep
 spec:
-  accessModes: {{ toJson .Values.pvc.accessModes }}
-  {{- if .Values.pvc.storageClassName }}
-  storageClassName: {{ .Values.pvc.storageClassName }}
+  accessModes: {{ toJson .Values.persistence.accessModes }}
+  {{- if .Values.persistence.storageClassName }}
+  storageClassName: {{ .Values.persistence.storageClassName }}
   {{- end }}
   resources:
     requests:
-      storage: {{ .Values.pvc.size }}
+      storage: {{ .Values.persistence.size }}
 {{- end }}

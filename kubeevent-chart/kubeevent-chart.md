@@ -1,24 +1,24 @@
 # kubeevent-chart
 
-Helm-Chart zum Deployment von kubeevent in einem Kubernetes-Cluster. Das Chart erzeugt Deployment, Service und PVC für die Anwendung, richtet über cert-manager ein TLS-Zertifikat ein und macht den Service via Istio Gateway/VirtualService nach außen erreichbar. Zusätzlich legt es ServiceAccount und RBAC-Rollen an, damit kubeevent Events aus den konfigurierten Namespaces lesen darf, sowie eine ConfigMap mit der `.env`-Konfiguration der Anwendung. Alle Werte werden zentral über `values.yaml` gesteuert.
+Helm-Chart zum Deployment von kubeevent in einem Kubernetes-Cluster. Das Chart erzeugt Deployment, Service und ein PVC für die SQLite-Datenbank, richtet über cert-manager ein TLS-Zertifikat ein und macht den Service via Istio Gateway/VirtualService nach außen erreichbar. Zusätzlich legt es ServiceAccount und RBAC-Rollen an, damit kubeevent Events aus den konfigurierten Namespaces lesen darf, sowie eine ConfigMap mit den Environment-Variablen der Anwendung. Alle Werte werden zentral über `values.yaml` gesteuert.
 
 ## Chart.yaml
 Chart-Metadaten (Name `kubeevent`, Typ `application`, Version). Beschreibt das Chart als "Kube Event Listener deployment with Istio Gateway and cert-manager".
 
 ## values.yaml
-Zentrale Konfigurationsdatei des Charts. Steuert u. a. Image/Tag, Replica-Anzahl, Service (Name/Port), PVC (Größe, StorageClass), Istio-Hosts und TLS-Secret, cert-manager-Issuer, ServiceAccount-Name, die zu überwachenden Namespaces (`watchNamespaces`) sowie den Inhalt der generierten `.env`-Datei (`envConfig`).
+Zentrale Konfigurationsdatei des Charts. Steuert u. a. Image/Tag, Replica-Anzahl, Service (Name/Port), Persistenz der Datenbank (`persistence`), Security-Context (`podSecurityContext`, `securityContext`), Istio-Hosts und TLS-Secret, cert-manager-Issuer, ServiceAccount-Name und die zu überwachenden Namespaces (`watchNamespaces`).
 
 ## templates/deployment.yaml
-Deployment der kubeevent-Anwendung. Startet den Container mit Image aus `values.yaml`, mountet ein temporäres Volume sowie die generierte `.env`-Datei per ConfigMap und definiert Liveness-Probe sowie Istio-Sidecar-Injection.
+Deployment der kubeevent-Anwendung. Startet den Container als UID 1000 mit read-only Root-Dateisystem. Das PVC hängt unter `/app/data`, `/tmp` ist ein `emptyDir`. Die Environment-Variablen kommen per `envFrom` aus der ConfigMap. Mit PVC nutzt das Deployment `strategy: Recreate`, damit nie zwei Pods dieselbe SQLite-Datei öffnen. Mehr als eine Replica auf einem ReadWriteOnce-PVC lehnt das Template ab.
 
 ## templates/service.yaml
 ClusterIP-Service, der den kubeevent-Pod unter dem konfigurierten Port erreichbar macht und als Ziel für VirtualService/Gateway dient.
 
 ## templates/pvc.yaml
-Optionale (per `pvc.enabled` steuerbare) PersistentVolumeClaim für den in `volume.mountPath` gemounteten temporären Speicher.
+PersistentVolumeClaim für die SQLite-Datenbank unter `persistence.mountPath`, abschaltbar per `persistence.enabled` (dann `emptyDir`, Daten gehen beim Neustart verloren). Durch `helm.sh/resource-policy: keep` bleibt das PVC bei `helm uninstall` erhalten.
 
 ## templates/configmap-env.yaml
-Optionale (per `envConfig.enabled` steuerbare) ConfigMap, die den Inhalt von `values.yaml -> envConfig.data` als `.env`-Datei bereitstellt und ins Deployment gemountet wird.
+ConfigMap mit `DB_PATH` (aus `persistence.mountPath`) und `POD_NAMESPACE` (aus `watchNamespaces`). Eine Änderung startet den Pod über die Checksum-Annotation neu.
 
 ## templates/serviceaccount.yaml
 Optional erzeugter ServiceAccount (per `serviceAccount.create`), unter dem der kubeevent-Pod läuft und der für die RBAC-Bindings verwendet wird.

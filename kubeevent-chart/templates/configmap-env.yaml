@@ -1,9 +1,11 @@
-{{- if .Values.envConfig.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ .Values.deploymentName }}-env
+  labels:
+    {{- include "kubeevent.labels" . | nindent 4 }}
 data:
-  .env: |
-{{ .Values.envConfig.data | indent 4 }}
-{{- end }}
+  # SQLite-Datei auf dem persistenten Volume
+  DB_PATH: {{ printf "%s/events.db" .Values.persistence.mountPath | quote }}
+  # Dieselbe Liste wie für die RBAC-Rollen
+  POD_NAMESPACE: {{ join "," .Values.watchNamespaces | quote }}

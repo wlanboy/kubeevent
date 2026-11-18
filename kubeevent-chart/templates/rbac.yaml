@@ -1,10 +1,13 @@
-{{- if .Values.serviceAccount.create }}
+{{- if .Values.rbac.create }}
 {{- range .Values.watchNamespaces }}
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: kubeevents-event-reader
+  name: {{ $.Release.Name }}-event-reader
   namespace: {{ . }}
+  labels:
+    {{- include "kubeevent.labels" $ | nindent 4 }}
 rules:
   - apiGroups: ["", "events.k8s.io"]
     resources: ["events"]
@@ -13,16 +16,17 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: kubeevents-event-reader-binding
+  name: {{ $.Release.Name }}-event-reader
   namespace: {{ . }}
+  labels:
+    {{- include "kubeevent.labels" $ | nindent 4 }}
 subjects:
   - kind: ServiceAccount
     name: {{ $.Values.serviceAccount.name }}
     namespace: {{ $.Release.Namespace }}
 roleRef:
   kind: Role
-  name: kubeevents-event-reader
+  name: {{ $.Release.Name }}-event-reader
   apiGroup: rbac.authorization.k8s.io
----
 {{- end }}
 {{- end }}

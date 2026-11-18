@@ -1,51 +1,85 @@
+{{- if and .Values.persistence.enabled (gt (int .Values.replicaCount) 1) (has "ReadWriteOnce" .Values.persistence.accessModes) }}
+{{- fail "SQLite auf einem ReadWriteOnce-PVC verträgt nur replicaCount: 1" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Values.deploymentName }}
+  labels:
+    {{- include "kubeevent.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  {{- if .Values.persistence.enabled }}
+  # SQLite-Datei auf RWO-Volume: alten Pod erst beenden, dann neuen starten
+  strategy:
+    type: Recreate
+    # entfernt beim Upgrade die Defaults der bisherigen RollingUpdate-Strategie
+    rollingUpdate: null
+  {{- end }}
   selector:
     matchLabels:
-      app: {{ .Values.deploymentName }}
+      {{- include "kubeevent.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: {{ .Values.deploymentName }}
+        {{- include "kubeevent.selectorLabels" . | nindent 8 }}
+        {{- include "kubeevent.labels" . | nindent 8 }}
         sidecar.istio.io/inject: "true"
+      annotations:
+        checksum/env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
+      # preStop + Shutdown der App + Puffer
+      terminationGracePeriodSeconds: {{ add .Values.shutdown.preStopSleepSeconds .Values.shutdown.appShutdownSeconds 5 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ .Values.deploymentName }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           ports:
-            - containerPort: {{ .Values.service.targetPort }}
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+          envFrom:
+            - configMapRef:
+                name: {{ .Values.deploymentName }}-env
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
-            - name: tmp-volume
-              mountPath: {{ .Values.volume.mountPath }}
-            - name: env-file 
-              mountPath: /app/.env 
-              subPath: .env
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+            - name: tmp
+              mountPath: /tmp
+          lifecycle:
+            preStop:
+              exec:
+                # Zeit, bis Service und Istio den Pod aus dem Routing nehmen
+                command: ["/bin/sh", "-c", "sleep {{ .Values.shutdown.preStopSleepSeconds }}"]
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            {{- toYaml .Values.probes.startup | nindent 12 }}
           livenessProbe:
             httpGet:
               path: /healthz
-              port: {{ .Values.service.targetPort }}
-            initialDelaySeconds: 5
-            periodSeconds: 10
-
+              port: http
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /readyz
-              port: {{ .Values.service.targetPort }}
-            initialDelaySeconds: 5
-            periodSeconds: 5
+              port: http
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
       volumes:
-        - name: tmp-volume
+        - name: data
+          {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:
-            claimName: {{ .Values.pvc.name }}
-        - name: env-file 
-          configMap: 
-            name: {{ .Values.deploymentName }}-env
-            items: 
-              - key: .env 
-                path: .env
+            claimName: {{ .Values.persistence.claimName }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.tmp.sizeLimit }}

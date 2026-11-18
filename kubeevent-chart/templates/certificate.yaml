@@ -1,18 +1,19 @@
-{{- if .Values.certManager.enabled }}
+{{- if and .Values.istio.tls.enabled .Values.certManager.enabled }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: {{ .Values.istio.tls.secretName }}
-  namespace: {{ .Values.istio.gatewayNamespace}}
+  # das Secret muss im Namespace des Ingress-Gateways liegen
+  namespace: {{ .Values.istio.gatewayNamespace }}
+  labels:
+    {{- include "kubeevent.labels" . | nindent 4 }}
 spec:
   secretName: {{ .Values.istio.tls.secretName }}
   issuerRef:
     name: {{ .Values.certManager.issuerRef.name }}
     kind: {{ .Values.certManager.issuerRef.kind }}
   dnsNames:
-{{- range .Values.certManager.dnsNames }}
-    - {{ . }}
-{{- end }}
+    {{- toYaml .Values.istio.hosts | nindent 4 }}
   privateKey:
     rotationPolicy: Always
 {{- end }}
