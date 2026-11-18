@@ -119,7 +119,7 @@ function eventRows(ev, ctx) {
         title: "Click for details",
     },
         h("td", { class: "col-time" }, timeElement(eventTime(ev))),
-        h("td", { class: "col-type " + typeClass(ev.type) }, ev.type || ""),
+        h("td", { class: "col-type" }, h("span", { class: "type-pill " + typeClass(ev.type) }, ev.type || "")),
         h("td", { class: "col-reason" }, h("code", {}, ev.reason || "")),
         h("td", {},
             h("div", { class: "msg-wrap" },

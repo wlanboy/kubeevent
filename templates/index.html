@@ -12,24 +12,37 @@
 
 <body>
 
-    <main class="container-fluid">
+    <header class="app-bar">
+        <div class="app-bar-inner">
+            <a class="brand" href="#stream" aria-label="Kubernetes Events, go to stream">
+                <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+                    <path d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25Z" fill="currentColor"/>
+                    <path d="M9 16h3.2l2-4.6 3.4 9.2 2.2-4.6H23" fill="none" stroke="#fff" stroke-width="2.2"
+                        stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div class="brand-text">
+                    <h1>Kubernetes Events</h1>
+                    <small>Cluster event monitor</small>
+                </div>
+            </a>
 
-        <header class="page-header">
-            <h1>Kubernetes Events</h1>
+            <nav class="tabs">
+                <ul role="tablist" aria-label="Views">
+                    <li role="presentation"><a href="#stream" id="tab-btn-stream" class="tab" role="tab" data-tab="stream" aria-controls="tab-stream" aria-selected="true">Stream</a></li>
+                    <li role="presentation"><a href="#search" id="tab-btn-search" class="tab" role="tab" data-tab="search" aria-controls="tab-search" aria-selected="false" tabindex="-1">Search</a></li>
+                    <li role="presentation"><a href="#stats" id="tab-btn-stats" class="tab" role="tab" data-tab="stats" aria-controls="tab-stats" aria-selected="false" tabindex="-1">Stats</a></li>
+                </ul>
+            </nav>
+
             <span id="connStatus" class="status" data-state="connecting" role="status">Connecting…</span>
-        </header>
+        </div>
+    </header>
 
-        <nav>
-            <ul role="tablist" aria-label="Views">
-                <li role="presentation"><a href="#stream" id="tab-btn-stream" class="tab" role="tab" data-tab="stream" aria-controls="tab-stream" aria-selected="true">Stream</a></li>
-                <li role="presentation"><a href="#search" id="tab-btn-search" class="tab" role="tab" data-tab="search" aria-controls="tab-search" aria-selected="false" tabindex="-1">Search</a></li>
-                <li role="presentation"><a href="#stats" id="tab-btn-stats" class="tab" role="tab" data-tab="stats" aria-controls="tab-stats" aria-selected="false" tabindex="-1">Stats</a></li>
-            </ul>
-        </nav>
+    <main class="container-fluid">
 
         <!-- STREAM TAB -->
         <section id="tab-stream" role="tabpanel" aria-labelledby="tab-btn-stream">
-            <fieldset role="group">
+            <fieldset role="group" class="toolbar">
                 <input id="streamFilter" type="search" aria-label="Filter events"
                     placeholder="Filter (type, reason, message, name, namespace, component, host)">
                 <select id="limitSelect" class="limit-select" aria-label="Number of events kept in the stream">
@@ -40,12 +53,12 @@
                     <option value="500">500 events</option>
                 </select>
                 <button id="streamPause" type="button" class="secondary" aria-pressed="false">Pause</button>
-                <button id="streamClear" type="button" class="outline">Clear</button>
+                <button id="streamClear" type="button" class="secondary outline">Clear</button>
             </fieldset>
 
             <p id="streamInfo" class="table-info" aria-live="polite"></p>
 
-            <div class="table-container">
+            <div class="card table-container">
                 <table class="event-table">
                     <thead>
                         <tr>
@@ -67,8 +80,8 @@
 
         <!-- SEARCH TAB -->
         <section id="tab-search" role="tabpanel" aria-labelledby="tab-btn-search" hidden>
-            <form id="searchForm">
-                <fieldset role="group">
+            <form id="searchForm" class="card search-card">
+                <fieldset role="group" class="toolbar">
                     <input id="searchInput" type="search" aria-label="Search text"
                         placeholder="Search text (message, name, reason, component, host …)">
                     <button id="searchBtn" type="submit">Search</button>
@@ -100,13 +113,13 @@
                             <option value="168">Last 7 days</option>
                         </select>
                     </label>
-                    <button id="searchReset" type="button" class="outline">Reset</button>
+                    <button id="searchReset" type="button" class="secondary outline">Reset</button>
                 </div>
             </form>
 
             <p id="searchInfo" class="table-info" aria-live="polite"></p>
 
-            <div class="table-container">
+            <div class="card table-container">
                 <table class="event-table">
                     <thead>
                         <tr>
@@ -128,7 +141,7 @@
 
         <!-- STATS TAB -->
         <section id="tab-stats" role="tabpanel" aria-labelledby="tab-btn-stats" hidden>
-            <div class="stats-toolbar">
+            <div class="card stats-toolbar">
                 <label>Time window
                     <select id="statsRange">
                         <option value="1">Last hour</option>
@@ -137,7 +150,7 @@
                         <option value="168">Last 7 days</option>
                     </select>
                 </label>
-                <button id="statsRefresh" type="button" class="outline">Refresh</button>
+                <button id="statsRefresh" type="button" class="secondary outline">Refresh</button>
                 <small id="statsUpdated" class="muted" aria-live="polite"></small>
             </div>
             <div id="statsContent"></div>
